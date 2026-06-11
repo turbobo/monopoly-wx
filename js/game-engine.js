@@ -1,0 +1,715 @@
+// 大富翁中国行 - 核心游戏引擎
+
+// ===== 类型定义 =====
+
+// ===== 棋盘数据 (28格) =====
+// 顺时针：底部(7) → 右侧(7) → 顶部(7) → 左侧(7)
+export const BOARD = [
+  // --- 底部 (0-6) ---
+  { id: 0,  type: 'start',     name: '起点',     price: 0,    rent: [],    color: '', emoji: '🏁' },
+  { id: 1,  type: 'property',  name: '厦门',     price: 60,   rent: [6, 12, 30],    color: '#8B4513', emoji: '🏖️' },
+  { id: 2,  type: 'chance',    name: '机会',     price: 0,    rent: [],    color: '', emoji: '❓' },
+  { id: 3,  type: 'property',  name: '青岛',     price: 80,   rent: [8, 16, 40],    color: '#8B4513', emoji: '🌊' },
+  { id: 4,  type: 'tax',       name: '个人所得税', price: 0,  rent: [],    color: '', emoji: '💸' },
+  { id: 5,  type: 'property',  name: '大连',     price: 100,  rent: [10, 20, 50],   color: '#87CEEB', emoji: '⛵' },
+  { id: 6,  type: 'railroad',  name: '高铁站',   price: 150,  rent: [25, 50, 75],   color: '#333', emoji: '🚄' },
+  // --- 右侧 (7-13) ---
+  { id: 7,  type: 'jail',      name: '监狱探访', price: 0,    rent: [],    color: '', emoji: '🔒' },
+  { id: 8,  type: 'property',  name: '重庆',     price: 120,  rent: [12, 24, 60],   color: '#FF4500', emoji: '🌶️' },
+  { id: 9,  type: 'property',  name: '西安',     price: 140,  rent: [14, 28, 70],   color: '#FF4500', emoji: '🏛️' },
+  { id: 10, type: 'utility',   name: '国家电网', price: 150,  rent: [20, 40, 60],   color: '#FFD700', emoji: '⚡' },
+  { id: 11, type: 'property',  name: '长沙',     price: 160,  rent: [16, 32, 80],   color: '#FF4500', emoji: '🎆' },
+  { id: 12, type: 'chance',    name: '机会',     price: 0,    rent: [],    color: '', emoji: '❓' },
+  { id: 13, type: 'property',  name: '杭州',     price: 200,  rent: [20, 40, 100],  color: '#FF69B4', emoji: '🌸' },
+  // --- 顶部 (14-20) ---
+  { id: 14, type: 'parking',   name: '免费停车', price: 0,    rent: [],    color: '', emoji: '🅿️' },
+  { id: 15, type: 'property',  name: '成都',     price: 220,  rent: [22, 44, 110],  color: '#32CD32', emoji: '🐼' },
+  { id: 16, type: 'property',  name: '广州',     price: 240,  rent: [24, 48, 120],  color: '#32CD32', emoji: '🌴' },
+  { id: 17, type: 'tax',       name: '房产税',   price: 0,    rent: [],    color: '', emoji: '🏦' },
+  { id: 18, type: 'property',  name: '南京',     price: 260,  rent: [26, 52, 130],  color: '#32CD32', emoji: '🏯' },
+  { id: 19, type: 'railroad',  name: '机场',     price: 200,  rent: [30, 60, 90],   color: '#333', emoji: '✈️' },
+  { id: 20, type: 'property',  name: '深圳',     price: 300,  rent: [30, 60, 150],  color: '#4169E1', emoji: '🏙️' },
+  // --- 左侧 (21-27) ---
+  { id: 21, type: 'goto_jail', name: '入狱',     price: 0,    rent: [],    color: '', emoji: '👮' },
+  { id: 22, type: 'property',  name: '苏州',     price: 280,  rent: [28, 56, 140],  color: '#4169E1', emoji: '🏮' },
+  { id: 23, type: 'chance',    name: '机会',     price: 0,    rent: [],    color: '', emoji: '❓' },
+  { id: 24, type: 'property',  name: '天津',     price: 320,  rent: [32, 64, 160],  color: '#4169E1', emoji: '🎡' },
+  { id: 25, type: 'property',  name: '上海',     price: 350,  rent: [35, 70, 175],  color: '#9932CC', emoji: '🌃' },
+  { id: 26, type: 'property',  name: '北京',     price: 400,  rent: [40, 80, 200],  color: '#9932CC', emoji: '🏰' },
+  { id: 27, type: 'utility',   name: '中国移动', price: 180,  rent: [25, 50, 75],   color: '#FFD700', emoji: '📱' },
+]
+
+export const BOARD_SIZE = BOARD.length // 28
+
+// 颜色分组
+export const COLOR_GROUPS = {
+  '#8B4513': [1, 3],       // 棕色: 厦门, 青岛
+  '#87CEEB': [5],          // 浅蓝: 大连
+  '#FF4500': [8, 9, 11],   // 橙红: 重庆, 西安, 长沙
+  '#FF69B4': [13],         // 粉色: 杭州
+  '#32CD32': [15, 16, 18], // 绿色: 成都, 广州, 南京
+  '#4169E1': [20, 22, 24], // 蓝色: 深圳, 苏州, 天津
+  '#9932CC': [25, 26],     // 紫色: 上海, 北京
+}
+
+// 机会卡
+export const CHANCE_CARDS = [
+  { text: '年终奖到账！获得 ¥100', effect: (gs) => { gs.players[gs.currentPlayer].money += 100; return '+¥100'; } },
+  { text: '手机丢了，维修花 ¥50', effect: (gs) => { gs.players[gs.currentPlayer].money -= 50; return '-¥50'; } },
+  { text: '中彩票了！获得 ¥200', effect: (gs) => { gs.players[gs.currentPlayer].money += 200; return '+¥200'; } },
+  { text: '交通违章罚款 ¥80', effect: (gs) => { gs.players[gs.currentPlayer].money -= 80; return '-¥80'; } },
+  { text: '股票大涨！获得 ¥150', effect: (gs) => { gs.players[gs.currentPlayer].money += 150; return '+¥150'; } },
+  { text: '生病住院，花费 ¥120', effect: (gs) => { gs.players[gs.currentPlayer].money -= 120; return '-¥120'; } },
+  { text: '朋友还钱了！获得 ¥80', effect: (gs) => { gs.players[gs.currentPlayer].money += 80; return '+¥80'; } },
+  { text: '红包雨！获得 ¥60', effect: (gs) => { gs.players[gs.currentPlayer].money += 60; return '+¥60'; } },
+  { text: '回起点领工资 ¥200', effect: (gs) => { gs.players[gs.currentPlayer].position = 0; gs.players[gs.currentPlayer].money += 200; return '回到起点 +¥200'; } },
+  { text: '进监狱！直接入狱', effect: (gs) => {
+    const player = gs.players[gs.currentPlayer]
+    player.position = 7
+    player.inJail = true
+    player.jailTurns = 0
+    return '入狱！'
+  }},
+]
+
+// ===== 玩家颜色/头像 =====
+export const PLAYER_PRESETS = [
+  { avatar: '🧑', color: '#ef4444' },
+  { avatar: '🤖', color: '#3b82f6' },
+  { avatar: '🧠', color: '#10b981' },
+  { avatar: '🎭', color: '#f59e0b' },
+]
+
+// ===== 工具函数 =====
+export function rollDice() {
+  return [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]
+}
+
+export function createPlayer(id, name, isAI, personality, initialMoney = 1500) {
+  const preset = PLAYER_PRESETS[id % PLAYER_PRESETS.length]
+  return {
+    id, name, avatar: isAI ? (personality === 'aggressive' ? '🔥' : personality === 'conservative' ? '🛡️' : '🤖') : preset.avatar,
+    money: initialMoney, position: 0, properties: [], inJail: false, jailTurns: 0,
+    bankrupt: false, isAI, aiPersonality: personality, color: preset.color,
+    cards: [], freePassActive: false,
+  }
+}
+
+// ===== 计算租金（含回合加成 + 涨价卡 + 免费卡） =====
+export function calculateRent(tile, owner, allPlayers, round = 1, priceHikes = [], freePassActive = false) {
+  if (tile.type === 'tax') {
+    return tile.name === '个人所得税' ? 100 : 150
+  }
+
+  // 免费卡生效 → 租金为 0
+  if (freePassActive) return 0
+
+  let baseRent = 0
+
+  if (tile.type === 'railroad') {
+    const railroads = owner.properties.filter(id => BOARD[id].type === 'railroad').length
+    baseRent = tile.rent[Math.min(railroads, tile.rent.length) - 1] || tile.rent[0]
+  } else if (tile.type === 'utility') {
+    const utilities = owner.properties.filter(id => BOARD[id].type === 'utility').length
+    baseRent = tile.rent[Math.min(utilities, tile.rent.length) - 1] || tile.rent[0]
+  } else if (tile.type === 'property') {
+    const sameColor = (COLOR_GROUPS[tile.color] || []).filter(id =>
+      owner.properties.includes(id)
+    ).length
+    const totalInGroup = (COLOR_GROUPS[tile.color] || []).length
+    if (sameColor === totalInGroup) baseRent = tile.rent[2] || tile.rent[0]
+    else if (sameColor >= 2) baseRent = tile.rent[1] || tile.rent[0]
+    else baseRent = tile.rent[0]
+  }
+
+  // 回合加成：10回合后x1.5，20回合后x2.0
+  const roundMultiplier = round >= 20 ? 2.0 : round >= 10 ? 1.5 : 1.0
+
+  // 涨价卡加成：租金翻倍
+  const priceHikeActive = priceHikes.some(h => h.tileId === tile.id && h.ownerPlayerId === owner.id)
+  const hikeMultiplier = priceHikeActive ? 2.0 : 1.0
+
+  return Math.floor(baseRent * roundMultiplier * hikeMultiplier)
+}
+
+// ===== 经过起点奖金（随回合递增） =====
+export function getStartBonus(round) {
+  const extra = Math.floor((round - 1) / 5) * 50
+  return Math.min(200 + extra, 400)
+}
+
+// ===== 玩家总资产 =====
+export function totalWealth(player) {
+  return player.money + player.properties.reduce((sum, id) => sum + BOARD[id].price, 0)
+}
+
+// ===== 移动玩家 =====
+export function movePlayer(player, steps, round = 1) {
+  const oldPos = player.position
+  player.position = (player.position + steps) % BOARD_SIZE
+  // 经过起点
+  if (player.position < oldPos) {
+    const bonus = getStartBonus(round)
+    player.money += bonus
+    return bonus
+  }
+  return 0
+}
+
+// ===== 处理机会卡 =====
+export function drawChance(gs) {
+  const card = CHANCE_CARDS[Math.floor(Math.random() * CHANCE_CARDS.length)]
+  const effect = card.effect(gs)
+  return `${card.text}（${effect}）`
+}
+
+// ===== 购买地皮 =====
+export function buyProperty(player, tileId) {
+  const tile = BOARD[tileId]
+  if (player.money >= tile.price) {
+    player.money -= tile.price
+    player.properties.push(tileId)
+    return true
+  }
+  return false
+}
+
+// ===== 检查破产 =====
+export function checkBankrupt(player) {
+  const soldTiles = []
+  if (player.money < 0) {
+    // 尝试卖地（从最便宜的开始）
+    const sorted = [...player.properties].sort((a, b) => BOARD[a].price - BOARD[b].price)
+    for (const tileId of sorted) {
+      player.money += Math.floor(BOARD[tileId].price * 0.6)
+      player.properties = player.properties.filter(id => id !== tileId)
+      soldTiles.push(tileId)
+      if (player.money >= 0) break
+    }
+    if (player.money < 0) {
+      player.bankrupt = true
+      return { bankrupt: true, soldTiles }
+    }
+  }
+  return { bankrupt: false, soldTiles }
+}
+
+// ===== AI决策 =====
+export function aiDecision(player, tile, difficulty = 'normal', gs) {
+  if (!player.isAI) return false
+  if (tile.type !== 'property' && tile.type !== 'railroad' && tile.type !== 'utility') return false
+
+  const personality = player.aiPersonality || 'balanced'
+
+  // 难度系数：简单=更保守，困难=更激进
+  let diffMultiplier = difficulty === 'easy' ? 1.5 : difficulty === 'hard' ? 0.7 : 1.0
+
+  // 同色组进度加成：已拥有同色组中越多，越倾向于补齐
+  let groupBonus = 1.0
+  if (tile.type === 'property') {
+    const group = COLOR_GROUPS[tile.color]
+    if (group && group.length > 0) {
+      const owned = group.filter(id => player.properties.includes(id)).length
+      const progress = owned / group.length
+      if (progress >= 0.5) {
+        // 已有 >=50%，大幅提高购买意愿（系数越小越容易买入）
+        groupBonus = progress >= 1 ? 0.5 : 0.6
+      } else if (owned >= 1) {
+        groupBonus = 0.85
+      }
+    }
+  }
+
+  // 回合数加成：游戏进入中后期，AI 更激进
+  const round = gs?.round ?? 1
+  const roundBonus = round > 20 ? 0.8 : round > 10 ? 0.9 : 1.0
+
+  diffMultiplier = diffMultiplier * groupBonus * roundBonus
+
+  if (personality === 'aggressive') {
+    // 激进型：只要买得起就买
+    return player.money >= tile.price * 0.8 * diffMultiplier
+  }
+  if (personality === 'conservative') {
+    // 保守型：只买便宜且有余钱的；但补齐同色组时放宽价格上限
+    const owned = COLOR_GROUPS[tile.color]?.filter(id => player.properties.includes(id)).length || 0
+    const priceCap = owned >= 1 ? 350 : 200
+    return player.money >= tile.price * 1.8 * diffMultiplier && tile.price <= priceCap
+  }
+  // 平衡型：看性价比 + 保留安全资金
+  if (tile.price > 300 && player.money < tile.price * 2 * diffMultiplier) return false
+  return player.money >= tile.price * 1.2 * diffMultiplier
+}
+
+// ===== AI拍卖决策 =====
+export function auctionDecision(player, tile, currentBid) {
+  if (!player.isAI || player.bankrupt) return 0
+  const personality = player.aiPersonality || 'balanced'
+  const maxWilling = personality === 'aggressive' ? tile.price * 0.95
+    : personality === 'conservative' ? tile.price * 0.6
+    : tile.price * 0.8
+
+  if (currentBid >= maxWilling || currentBid >= player.money * 0.6) return 0
+  return Math.min(currentBid + 20, Math.floor(maxWilling))
+}
+
+// ===== AI交易决策（作为卖方） =====
+export function tradeDecision(seller, tile, offer) {
+  if (!seller.isAI) return false
+  const personality = seller.aiPersonality || 'balanced'
+  const minAccept = personality === 'aggressive' ? tile.price * 1.5
+    : personality === 'conservative' ? tile.price * 1.2
+    : tile.price * 1.3
+  return offer >= minAccept
+}
+
+// ===== AI 主动变卖资产决策 =====
+export function aiSellDecision(player) {
+  if (!player.isAI || player.properties.length === 0) return null
+  const personality = player.aiPersonality || 'balanced'
+  const threshold = personality === 'aggressive' ? 50
+    : personality === 'conservative' ? 150
+    : 100
+  if (player.money >= threshold) return null
+
+  // 优先卖不在同色组内的最便宜地皮
+  const sorted = [...player.properties].sort((a, b) => BOARD[a].price - BOARD[b].price)
+  for (const tileId of sorted) {
+    const tile = BOARD[tileId]
+    const group = COLOR_GROUPS[tile.color]
+    if (!group) return tileId
+    const owned = group.filter(id => player.properties.includes(id)).length
+    if (owned < group.length) return tileId
+  }
+  return sorted[0]
+}
+
+// ===== AI 主动发起交易决策（作为买方） =====
+export function aiTradeInitDecision(buyer, gs) {
+  if (!buyer.isAI || buyer.bankrupt) return null
+  const personality = buyer.aiPersonality || 'balanced'
+
+  for (const [color, group] of Object.entries(COLOR_GROUPS)) {
+    const owned = group.filter(id => buyer.properties.includes(id))
+    if (owned.length === 0 || owned.length >= group.length) continue
+    const missing = group.filter(id => !buyer.properties.includes(id))
+
+    for (const tileId of missing) {
+      const tile = BOARD[tileId]
+      const owner = gs.players.find(p => p.properties.includes(tileId) && !p.bankrupt && p.id !== buyer.id)
+      if (!owner) continue
+
+      const mult = personality === 'aggressive' ? 1.6
+        : personality === 'conservative' ? 1.3
+        : 1.4
+      const offer = Math.floor(tile.price * mult)
+
+      if (offer <= buyer.money * 0.5) {
+        return { targetId: owner.id, tileId, offer }
+      }
+    }
+  }
+  return null
+}
+
+// ===== 道具卡系统 =====
+
+const CARD_POOL = [
+  { type: 'remote_dice', name: '遥控骰子', emoji: '🎯', description: '指定本次掷骰点数(2-12)' },
+  { type: 'roadblock',   name: '路障卡',   emoji: '🚧', description: '放置路障，踩中者停一回合' },
+  { type: 'swap',        name: '交换卡',   emoji: '🔄', description: '与任意玩家互换位置' },
+  { type: 'free_pass',   name: '免费卡',   emoji: '🛡️', description: '下次付租金时免除费用' },
+  { type: 'price_hike',  name: '涨价卡',   emoji: '📈', description: '你的一块地皮租金翻倍(持续3回合)' },
+]
+
+export function generateCardId() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+export function drawRandomCard() {
+  const template = CARD_POOL[Math.floor(Math.random() * CARD_POOL.length)]
+  return { ...template, id: generateCardId() }
+}
+
+// 每5回合给所有未破产玩家发一张卡
+export function distributeCardsIfDue(gs) {
+  const msgs = []
+  if (gs.round > 0 && gs.round % 5 === 0 && gs.round !== gs.lastCardRound) {
+    gs.lastCardRound = gs.round
+    for (const p of gs.players) {
+      if (!p.bankrupt) {
+        const card = drawRandomCard()
+        p.cards.push(card)
+        msgs.push(`🃏 ${p.name} 获得了道具卡「${card.emoji} ${card.name}」`)
+      }
+    }
+  }
+  return msgs
+}
+
+// 使用遥控骰子 → 返回指定点数
+export function useRemoteDice(total) {
+  const clamped = Math.max(2, Math.min(12, total))
+  const d1 = Math.max(1, Math.min(6, Math.floor(clamped / 2)))
+  const d2 = clamped - d1
+  return [d1, d2]
+}
+
+// 使用交换卡 → 交换两个玩家位置
+export function useSwapCard(gs, userPlayerId, targetPlayerId) {
+  const user = gs.players.find(p => p.id === userPlayerId)
+  const target = gs.players.find(p => p.id === targetPlayerId)
+  if (!user || !target || user.bankrupt || target.bankrupt) return ''
+  const tmp = user.position
+  user.position = target.position
+  target.position = tmp
+  // 移除已使用的卡
+  const cardIdx = user.cards.findIndex(c => c.type === 'swap')
+  if (cardIdx >= 0) user.cards.splice(cardIdx, 1)
+  return `🔄 ${user.name} 和 ${target.name} 互换了位置！`
+}
+
+// 使用路障卡
+export function useRoadblockCard(gs, userPlayerId, tileId) {
+  const user = gs.players.find(p => p.id === userPlayerId)
+  if (!user || user.bankrupt) return ''
+  // 不允许在特殊格子上放置路障
+  const tile = BOARD[tileId]
+  if (['start', 'jail', 'parking', 'goto_jail'].includes(tile.type)) {
+    return `❌ 不能在${tile.name}放置路障！`
+  }
+  gs.roadblocks.push({ tileId, ownerPlayerId: userPlayerId })
+  const cardIdx = user.cards.findIndex(c => c.type === 'roadblock')
+  if (cardIdx >= 0) user.cards.splice(cardIdx, 1)
+  return `🚧 ${user.name} 在 ${tile.name} 放置了路障！`
+}
+
+// 使用免费卡 → 标记激活
+export function useFreePassCard(gs, userPlayerId) {
+  const user = gs.players.find(p => p.id === userPlayerId)
+  if (!user || user.bankrupt) return ''
+  user.freePassActive = true
+  const cardIdx = user.cards.findIndex(c => c.type === 'free_pass')
+  if (cardIdx >= 0) user.cards.splice(cardIdx, 1)
+  return `🛡️ ${user.name} 激活了免费卡，下次租金免除！`
+}
+
+// 使用涨价卡
+export function usePriceHikeCard(gs, userPlayerId, tileId) {
+  const user = gs.players.find(p => p.id === userPlayerId)
+  if (!user || user.bankrupt) return ''
+  if (!user.properties.includes(tileId)) return ''
+  gs.priceHikes.push({ tileId, ownerPlayerId: userPlayerId, roundsLeft: 3 })
+  const cardIdx = user.cards.findIndex(c => c.type === 'price_hike')
+  if (cardIdx >= 0) user.cards.splice(cardIdx, 1)
+  return `📈 ${user.name} 对 ${BOARD[tileId].name} 使用了涨价卡，租金翻倍3回合！`
+}
+
+// 检查路障（在 movePlayer 后调用）
+export function checkRoadblock(gs) {
+  const player = gs.players[gs.currentPlayer]
+  const blockIdx = gs.roadblocks.findIndex(r => r.tileId === player.position && r.ownerPlayerId !== player.id)
+  if (blockIdx >= 0) {
+    gs.roadblocks.splice(blockIdx, 1)
+    return `🚧 ${player.name} 踩中了路障，本回合被拦截！`
+  }
+  return null
+}
+
+// 涨价卡回合递减（在 nextPlayer 时调用）
+export function tickPriceHikes(gs) {
+  const msgs = []
+  gs.priceHikes = gs.priceHikes.map(h => ({ ...h, roundsLeft: h.roundsLeft - 1 })).filter(h => {
+    if (h.roundsLeft <= 0) {
+      msgs.push(`📉 ${BOARD[h.tileId].name} 的涨价效果结束了`)
+      return false
+    }
+    return true
+  })
+  return msgs
+}
+export function executeTurn(gs, preRolledDice) {
+  const messages = []
+  const player = gs.players[gs.currentPlayer]
+
+  if (player.bankrupt) {
+    messages.push(`${player.name} 已破产，跳过回合`)
+    nextPlayer(gs)
+    return messages
+  }
+
+  // 监狱逻辑
+  if (player.inJail) {
+    player.jailTurns++
+    // AI 出狱策略：根据性格决定是否主动支付保释金
+    let aiPayBail = false
+    if (player.isAI && player.jailTurns < 3 && player.money >= 50) {
+      const jp = player.aiPersonality || 'balanced'
+      if (jp === 'aggressive' && player.jailTurns >= 1) aiPayBail = true
+      else if (jp === 'balanced' && player.jailTurns >= 2) aiPayBail = true
+      // conservative：等到第3回合强制出狱
+    }
+    if (player.jailTurns >= 3 || aiPayBail) {
+      player.inJail = false
+      player.jailTurns = 0
+      player.money -= 50 // 保释金
+      messages.push(`💰 ${player.name} 缴纳保释金 ¥50 出狱`)
+    } else {
+      const jailDice = preRolledDice || rollDice()
+      if (jailDice[0] === jailDice[1]) {
+        player.inJail = false
+        player.jailTurns = 0
+        messages.push(`🎲 ${player.name} 掷出双数 ${jailDice[0]}+${jailDice[1]}，越狱成功！`)
+        // 使用同一个骰子移动，不再重新掷骰
+        const total = jailDice[0] + jailDice[1]
+        gs.dice = jailDice
+        const bonus = movePlayer(player, total, gs.round)
+        if (bonus > 0) messages.push(`💰 ${player.name} 经过起点，获得 ¥${bonus}`)
+        const tile = BOARD[player.position]
+        messages.push(`📍 ${player.name} 到达 ${tile.emoji} ${tile.name}`)
+        // 继续处理格子逻辑...
+        return processTile(gs, tile, messages)
+      } else {
+        messages.push(`🎲 ${player.name} 在监狱掷骰 ${jailDice[0]}+${jailDice[1]}，未出双数，继续等待`)
+        nextPlayer(gs)
+        return messages
+      }
+    }
+  }
+
+  // 使用预掷骰子或新掷
+  const dice = preRolledDice || rollDice()
+  gs.dice = dice
+  const total = dice[0] + dice[1]
+  messages.push(`🎲 ${player.name} 掷出 ${dice[0]} + ${dice[1]} = ${total}`)
+
+  // 移动
+  const bonus = movePlayer(player, total, gs.round)
+  if (bonus > 0) messages.push(`💰 ${player.name} 经过起点，获得 ¥${bonus}`)
+
+  // 检查路障
+  const roadblockMsg = checkRoadblock(gs)
+  if (roadblockMsg) {
+    messages.push(roadblockMsg)
+    // 踩中路障：跳过本回合，直接到下一个玩家
+    nextPlayer(gs)
+    return messages
+  }
+
+  const tile = BOARD[player.position]
+  messages.push(`📍 ${player.name} 到达 ${tile.emoji} ${tile.name}`)
+
+  return processTile(gs, tile, messages)
+}
+
+// 处理格子效果
+function processTile(gs, tile, messages) {
+  const player = gs.players[gs.currentPlayer]
+  switch (tile.type) {
+    case 'start':
+      messages.push(`😌 ${player.name} 在起点休息`)
+      break
+    case 'jail':
+      messages.push(`👀 ${player.name} 来探监，虚惊一场`)
+      break
+    case 'parking':
+      messages.push(`🅿️ ${player.name} 在免费停车休息`)
+      break
+    case 'goto_jail':
+      player.inJail = true
+      player.jailTurns = 0
+      player.position = 7
+      messages.push(`👮 ${player.name} 被送进监狱！`)
+      break
+    case 'tax': {
+      const tax = tile.name === '个人所得税' ? 100 : 150
+      player.money -= tax
+      messages.push(`💸 ${player.name} 缴纳${tile.name} ¥${tax}`)
+      break
+    }
+    case 'chance': {
+      const chanceMsg = drawChance(gs)
+      messages.push(`❓ ${player.name} ${chanceMsg}`)
+      // 机会卡可能扣钱导致破产，立即检查
+      const chanceBankrupt = checkBankrupt(player)
+      for (const tileId of chanceBankrupt.soldTiles) {
+        messages.push(`🏷️ ${player.name} 被迫卖出了 ${BOARD[tileId].name}（6折 ¥${Math.floor(BOARD[tileId].price * 0.6)}）`)
+      }
+      if (chanceBankrupt.bankrupt) {
+        messages.push(`💀 ${player.name} 破产了！`)
+      }
+      break
+    }
+    case 'property':
+    case 'railroad':
+    case 'utility': {
+      // 检查是否有人拥有
+      const owner = gs.players.find(p => p.properties.includes(tile.id))
+      if (owner && owner.id !== player.id && !owner.bankrupt) {
+        // 检查免费卡是否生效
+        const freePassActive = player.freePassActive || false
+        const rent = calculateRent(tile, owner, gs.players, gs.round, gs.priceHikes, freePassActive)
+        if (freePassActive) {
+          // 使用免费卡，免除租金
+          player.freePassActive = false
+          messages.push(`🛡️ ${player.name} 使用了免费卡，免除了 ${tile.name} 的租金！`)
+        } else if (player.money >= rent) {
+          // 正常支付
+          player.money -= rent
+          owner.money += rent
+          messages.push(`💰 ${player.name} 向 ${owner.name} 支付租金 ¥${rent}`)
+        } else {
+          // 资金不足：先扣减让 checkBankrupt 触发卖地流程
+          player.money -= rent
+          const rentBankrupt = checkBankrupt(player)
+          for (const tileId of rentBankrupt.soldTiles) {
+            messages.push(`🏷️ ${player.name} 被迫卖出了 ${BOARD[tileId].name}（6折 ¥${Math.floor(BOARD[tileId].price * 0.6)}）`)
+          }
+          if (!rentBankrupt.bankrupt) {
+            // 卖地后足以支付
+            owner.money += rent
+            messages.push(`💰 ${player.name} 向 ${owner.name} 支付租金 ¥${rent}`)
+          } else {
+            // 卖光全部地仍不足，将可支付部分全部给 owner
+            const paid = Math.max(0, rent + player.money) // player.money 此时 < 0，差额即未支付部分
+            owner.money += paid
+            player.money = 0
+            messages.push(`💸 ${player.name} 无力支付全额租金，将剩余 ¥${paid} 支付给 ${owner.name}`)
+            messages.push(`💀 ${player.name} 破产了！`)
+          }
+        }
+      } else if (!owner) {
+        // AI或玩家决定是否购买
+        if (player.isAI) {
+          if (aiDecision(player, tile, gs.difficulty, gs)) {
+            buyProperty(player, tile.id)
+            messages.push(`🏠 ${player.name} 购买了 ${tile.name}（¥${tile.price}）`)
+          } else {
+            messages.push(`❌ ${player.name} 决定不买 ${tile.name}`)
+          }
+        } else {
+          // 玩家需要在UI中决定（余额不足时跳过）
+          if (player.money >= tile.price) {
+            gs.phase = 'action'
+            messages.push(`🤔 ${player.name} 是否购买 ${tile.name}？价格 ¥${tile.price}`)
+            return messages
+          } else {
+            messages.push(`💸 ${player.name} 资金不足，无法购买 ${tile.name}（需要 ¥${tile.price}）`)
+          }
+        }
+      } else {
+        messages.push(`🏡 ${player.name} 回到自己的地盘 ${tile.name}`)
+      }
+      break
+    }
+  }
+
+  // 检查破产（含卖地消息）
+  const bankruptResult = checkBankrupt(player)
+  for (const tileId of bankruptResult.soldTiles) {
+    messages.push(`🏷️ ${player.name} 被迫卖出了 ${BOARD[tileId].name}（6折 ¥${Math.floor(BOARD[tileId].price * 0.6)}）`)
+  }
+  if (bankruptResult.bankrupt) {
+    messages.push(`💀 ${player.name} 破产了！`)
+  }
+
+  // 检查游戏结束
+  const activePlayers = gs.players.filter(p => !p.bankrupt)
+  if (activePlayers.length <= 1) {
+    gs.gameOver = true
+    gs.winner = activePlayers[0]?.id ?? null
+    messages.push(`🎉 游戏结束！${activePlayers[0]?.name} 获胜！`)
+  }
+
+  nextPlayer(gs)
+  return messages
+}
+
+export function finalizeTurn(gs) {
+  const messages = []
+  const player = gs.players[gs.currentPlayer]
+
+  const bankruptResult = checkBankrupt(player)
+  for (const tileId of bankruptResult.soldTiles) {
+    messages.push(`🏷️ ${player.name} 被迫卖出了 ${BOARD[tileId].name}（6折 ¥${Math.floor(BOARD[tileId].price * 0.6)}）`)
+  }
+  if (bankruptResult.bankrupt) {
+    messages.push(`💀 ${player.name} 破产了！`)
+  }
+
+  const activePlayers = gs.players.filter(p => !p.bankrupt)
+  if (activePlayers.length <= 1) {
+    gs.gameOver = true
+    gs.winner = activePlayers[0]?.id ?? null
+    messages.push(`🎉 游戏结束！${activePlayers[0]?.name} 获胜！`)
+  }
+
+  nextPlayer(gs)
+  return messages
+}
+
+export function nextPlayer(gs) {
+  const len = gs.players.length
+  let next = (gs.currentPlayer + 1) % len
+  // 第一步即从最后一位回绕到第一位时，标记回绕
+  let wrappedAround = gs.currentPlayer === len - 1
+  let safety = 0
+  while (gs.players[next].bankrupt && safety < len) {
+    const prev = next
+    next = (next + 1) % len
+    if (prev === len - 1 && next === 0) wrappedAround = true
+    safety++
+  }
+  if (wrappedAround) {
+    gs.round++
+    // 每回合结束时递减涨价卡剩余回合
+    const hikeMsgs = tickPriceHikes(gs)
+    if (hikeMsgs.length > 0) {
+      gs.log.push(...hikeMsgs)
+    }
+    // 每5回合发放道具卡
+    const cardMsgs = distributeCardsIfDue(gs)
+    if (cardMsgs.length > 0) {
+      gs.log.push(...cardMsgs)
+    }
+  }
+  gs.currentPlayer = next
+  gs.phase = 'roll'
+
+  // 检查回合上限（maxRounds=0 表示无限/纯淘汰制）
+  if (gs.maxRounds > 0 && gs.round > gs.maxRounds && !gs.gameOver) {
+    gs.gameOver = true
+    const richest = [...gs.players].filter(p => !p.bankrupt).sort((a, b) => totalWealth(b) - totalWealth(a))
+    gs.winner = richest[0]?.id ?? null
+    gs.log.push(`⏰ ${gs.maxRounds}回合结束！${richest[0]?.name} 以总资产最高获胜！`)
+  }
+}
+
+// ===== 创建游戏 =====
+export function createGame(mode, playerCount, initialMoney = 1500, difficulty = 'normal', maxRounds = 0) {
+  const players = []
+
+  if (mode === 'ai') {
+    players.push(createPlayer(0, '你', false, undefined, initialMoney))
+    // playerCount = AI对手数量（1/2/3）
+    const personalities = ['aggressive', 'balanced', 'conservative']
+    const names = ['小火', '阿平', '老守']
+    for (let i = 0; i < Math.min(playerCount, 3); i++) {
+      players.push(createPlayer(i + 1, names[i], true, personalities[i], initialMoney))
+    }
+  } else {
+    const names = ['玩家1', '玩家2', '玩家3', '玩家4']
+    for (let i = 0; i < playerCount; i++) {
+      players.push(createPlayer(i, names[i], false, undefined, initialMoney))
+    }
+  }
+
+  return {
+    players, currentPlayer: 0, round: 1, maxRounds,
+    dice: [1, 1], phase: 'roll', log: ['🎲 游戏开始！'], gameOver: false, winner: null,
+    difficulty,
+    roadblocks: [],
+    priceHikes: [],
+    lastCardRound: 0,
+  }
+}
