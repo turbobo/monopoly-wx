@@ -40,26 +40,39 @@ export class WxNetwork {
     this.db = wx.cloud.database({ env: DB_ENV })
   }
 
-  // ===== 登录（使用 wx.login code 作为身份标识，无需云函数）=====
+  // ===== 登录：用 wx.login 获取临时凭证，再通过云数据库获取 openId =====
   login() {
     return new Promise((resolve, reject) => {
       this.initDB()
-      wx.login({
-        success: (res) => {
-          if (!res.code) {
-            // fallback: 用随机 ID
-            this.clientId = 'wx-' + Math.random().toString(36).slice(2, 8)
-          } else {
-            this.clientId = res.code.slice(0, 16)
-          }
-          this.nickName = '玩家' + this.clientId.slice(-4)
-          resolve({ openId: this.clientId, nickName: this.nickName })
+
+      // 直接写一条含 _openid 的测试记录来获取 openId（云数据库会自动注入 _openid）
+      // 比调用云函数更简单，不需要部署任何云函数
+      const tempMark = 'login_' + Date.now()
+      this.db.collection(COLLECTION).add({
+        data: { _tempLogin: true, tempMark, ts: this.db.serverDate() },
+        success: (addRes) => {
+          this.db.collection(COLLECTION).doc(addRes._id).get({
+            success: (getRes) => {
+              const openId = getRes.data && getRes.data._openid
+              // 清理临时记录（fire and forget）
+              this.db.collection(COLLECTION).doc(addRes._id).remove()
+              if (!openId) { reject(new Error('未能获取微信身份，请检查云环境配置')); return }
+              this.clientId = openId
+              this.nickName = '玩家' + openId.slice(-4)
+              resolve({ openId, nickName: this.nickName })
+            },
+            fail: () => reject(new Error('读取用户信息失败，请确认数据库权限为"所有用户可读写"'))
+          })
         },
-        fail: () => {
-          // fallback: 用随机 ID
-          this.clientId = 'wx-' + Math.random().toString(36).slice(2, 8)
-          this.nickName = '玩家' + this.clientId.slice(-4)
-          resolve({ openId: this.clientId, nickName: this.nickName })
+        fail: (err) => {
+          const msg = (err.errMsg || String(err)).toLowerCase()
+          if (msg.includes('permission') || msg.includes('auth')) {
+            reject(new Error('❌ 数据库权限错误\n请到云开发控制台→数据库→rooms集合→权限设置→选择"所有用户可读写"'))
+          } else if (msg.includes('collection') || msg.includes('not exist')) {
+            reject(new Error('❌ rooms 集合不存在\n请到云开发控制台→数据库→新建集合，名称填 rooms'))
+          } else {
+            reject(new Error('连接失败: ' + (err.errMsg || err)))
+          }
         }
       })
     })
@@ -78,7 +91,6 @@ export class WxNetwork {
         openId: this.clientId, isHost: true, ready: true
       }]
 
-      // 写入云数据库
       this.db.collection(COLLECTION).add({
         data: {
           roomId: this.roomId,
@@ -89,12 +101,21 @@ export class WxNetwork {
           gameState: null,
           updatedAt: this.db.serverDate()
         },
-        success: () => {
-          // Host 开始轮询，处理玩家加入等消息
+        success: (res) => {
+          // 保存 _docId 供后续 update 使用
+          this._docId = res._id
+          this.lastMsgTimestamp = Date.now()
           this.startHostPoll()
           resolve(this.roomId)
         },
-        fail: (err) => reject(new Error('创建房间失败: ' + err.errMsg))
+        fail: (err) => {
+          const msg = err.errMsg || String(err)
+          if (msg.includes('permission')) {
+            reject(new Error('数据库权限不足，请将 rooms 集合权限设为"所有用户可读写"'))
+          } else {
+            reject(new Error('创建房间失败: ' + msg))
+          }
+        }
       })
     })
   }
@@ -291,6 +312,7 @@ export class WxNetwork {
   // ===== Host 直接写消息 =====
   hostPushMessage(type, payload) {
     if (!this._docId || !this.db) return
+    const _ = this.db.command
     const msg = {
       type, from: this.clientId, fromName: this.nickName,
       payload, timestamp: Date.now()
@@ -298,7 +320,7 @@ export class WxNetwork {
     this.db.collection(COLLECTION).doc(this._docId).update({
       data: {
         players: this.players,
-        messages: this.db.command.push(msg),
+        messages: _.push(msg),
         updatedAt: this.db.serverDate()
       }
     })

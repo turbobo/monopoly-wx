@@ -7,5 +7,6 @@
   },
   "cloud": true,
   "shareAppMessage": true,
-  "shareTimeline": false
+  "shareTimeline": false,
+  "__usePrivacyCheck__": true
 }

@@ -170,82 +170,141 @@ export default class MainGame {
   // ===== 大厅界面 =====
   drawLobby() {
     const ctx = this.ctx, cx = this.W / 2
-    const btnW = this.W * 0.7
+    const btnW = this.W * 0.75
     const btnX = cx - btnW / 2
     const H = this.H
 
+    // 标题
     ctx.textAlign = 'center'
     ctx.fillStyle = '#f59e0b'
-    ctx.font = 'bold 32px sans-serif'
-    ctx.fillText('在线对战', cx, H * 0.10)
+    ctx.font = 'bold 30px sans-serif'
+    ctx.fillText('在线对战', cx, H * 0.06)
 
-    // 创建房间按钮
-    const createY = H * 0.18
-    this.drawButton(btnX, createY, btnW, 56, '🏠 创建房间', '#f59e0b', 'lobby-create')
+    if (!this.roomId) {
+      // ===== 未加入房间：显示创建/加入按钮 =====
+      const createY = H * 0.15
+      this.drawButton(btnX, createY, btnW, 56, '🏠 创建房间', '#f59e0b', 'lobby-create')
 
-    // 加入房间
-    const joinY = H * 0.30
-    this.drawButton(btnX, joinY, btnW, 56, '🔗 加入房间', '#3b82f6', 'lobby-join')
+      const joinY = H * 0.28
+      this.drawButton(btnX, joinY, btnW, 56, '🔗 加入房间', '#3b82f6', 'lobby-join')
+    } else {
+      // ===== 已在房间中：显示房间信息 =====
 
-    // 房间号 + 邀请按钮
-    const roomY = H * 0.44
-    if (this.roomId) {
-      ctx.font = 'bold 24px sans-serif'
+      // 房间号卡片
+      const cardY = H * 0.10
+      const cardH = 70
+      ctx.fillStyle = '#1a2332'
+      this.roundRect(20, cardY, this.W - 40, cardH, 16)
+      ctx.fill()
+      ctx.strokeStyle = '#2d4a3e'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      ctx.textAlign = 'center'
+      ctx.font = 'bold 28px monospace'
       ctx.fillStyle = '#10b981'
-      ctx.fillText('房间号: ' + this.roomId, cx - 40, roomY + 16)
-      this.drawButton(cx + 60, roomY, 70, 36, '复制', '#374151', 'lobby-copy')
+      ctx.fillText(this.roomId, cx - 30, cardY + 42)
+
+      ctx.font = '13px sans-serif'
+      ctx.fillStyle = '#6b7280'
+      ctx.fillText('房间号', cx - 30, cardY + 60)
+
+      // 复制按钮
+      this.drawButton(this.W - 90, cardY + 15, 65, 40, '复制', '#374151', 'lobby-copy')
+
+      // 玩家列表
+      const listY = cardY + cardH + 20
+      ctx.textAlign = 'left'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.fillStyle = '#9ca3af'
+      ctx.fillText('玩家 (' + this.onlinePlayers.length + '/4)', 32, listY)
+
+      let py = listY + 30
+      for (let i = 0; i < this.onlinePlayers.length; i++) {
+        const p = this.onlinePlayers[i]
+        // 玩家卡片
+        ctx.fillStyle = '#1a2332'
+        this.roundRect(24, py - 18, this.W - 48, 40, 10)
+        ctx.fill()
+
+        ctx.textAlign = 'left'
+        ctx.font = 'bold 16px sans-serif'
+        ctx.fillStyle = p.isHost ? '#f59e0b' : '#e5e7eb'
+        ctx.fillText((p.isHost ? '👑 ' : '🎮 ') + p.name, 40, py + 4)
+
+        if (p.isHost) {
+          ctx.textAlign = 'right'
+          ctx.font = '13px sans-serif'
+          ctx.fillStyle = '#f59e0b'
+          ctx.fillText('房主', this.W - 40, py + 4)
+        }
+        py += 50
+      }
+
+      // 等待提示
+      if (this.onlinePlayers.length < 2) {
+        ctx.textAlign = 'center'
+        ctx.font = '14px sans-serif'
+        ctx.fillStyle = '#6b7280'
+        ctx.fillText('等待其他玩家加入...', cx, py + 10)
+      }
 
       // 邀请好友按钮
-      const inviteY = roomY + 50
-      this.drawButton(btnX, inviteY, btnW, 50, '📨 邀请好友', '#8b5cf6', 'lobby-invite')
-    }
+      const inviteY = Math.max(py + 30, H * 0.58)
+      this.drawButton(btnX, inviteY, btnW, 52, '📨 邀请好友', '#8b5cf6', 'lobby-invite')
 
-    // 玩家列表
-    ctx.font = '16px sans-serif'
-    ctx.textAlign = 'left'
-    let listY = H * 0.52
-    for (const p of this.onlinePlayers) {
-      ctx.fillStyle = p.isHost ? '#f59e0b' : '#d1d5db'
-      ctx.fillText((p.isHost ? '👑 ' : '  ') + p.name, 40, listY)
-      listY += 32
-    }
-
-    // 开始游戏按钮（仅房主可见）
-    if (this.network.getIsHost() && this.onlinePlayers.length >= 1) {
-      this.drawButton(cx - btnW / 2, H * 0.70, btnW, 56, '🎮 开始游戏', '#10b981', 'lobby-start')
+      // 开始游戏按钮（仅房主可见，2人以上）
+      if (this.network.getIsHost() && this.onlinePlayers.length >= 2) {
+        this.drawButton(btnX, inviteY + 66, btnW, 56, '🎮 开始游戏', '#10b981', 'lobby-start')
+      }
     }
 
     // 返回按钮
-    this.drawButton(20, H - 80, 100, 48, '← 返回', '#374151', 'lobby-back')
+    this.drawButton(20, H - 70, 100, 44, '← 返回', '#374151', 'lobby-back')
 
-    // 日志
-    this.drawLogArea(H * 0.79, this.W - 20, H * 0.12)
+    // 日志（底部小区域）
+    this.drawLogArea(H - 160, this.W - 40, 80)
   }
 
   handleLobbyTouch(x, y) {
     const cx = this.W / 2
-    const btnW = this.W * 0.7
+    const btnW = this.W * 0.75
     const btnX = cx - btnW / 2
     const H = this.H
-    const roomY = H * 0.44
 
-    const createY = H * 0.18
-    const joinY = H * 0.30
-
-    if (this.hitBtn(x, y, btnX, createY, btnW, 56)) this.onCreateRoom()
-    else if (this.hitBtn(x, y, btnX, joinY, btnW, 56)) this.onJoinRoom()
-    else if (this.hitBtn(x, y, cx + 60, roomY, 70, 36)) this.onCopyRoomId()
-    else if (this.roomId && this.hitBtn(x, y, btnX, roomY + 50, btnW, 50)) this.onInviteFriend()
-    else if (this.hitBtn(x, y, btnX, H * 0.70, btnW, 56)) this.onHostStartGame()
-    else if (this.hitBtn(x, y, 20, H - 80, 100, 48)) {
+    // 返回按钮（始终可用）
+    if (this.hitBtn(x, y, 20, H - 70, 100, 44)) {
       this.network.leaveRoom()
+      this.roomId = ''
+      this.onlinePlayers = []
       this.screen = SCREEN.MENU
+      return
+    }
+
+    if (!this.roomId) {
+      // 未加入房间
+      const createY = H * 0.15
+      const joinY = H * 0.28
+      if (this.hitBtn(x, y, btnX, createY, btnW, 56)) this.onCreateRoom()
+      else if (this.hitBtn(x, y, btnX, joinY, btnW, 56)) this.onJoinRoom()
+    } else {
+      // 已在房间中
+      const cardY = H * 0.10
+      if (this.hitBtn(x, y, this.W - 90, cardY + 15, 65, 40)) this.onCopyRoomId()
+
+      const inviteY = Math.max(
+        cardY + 70 + 20 + 30 + this.onlinePlayers.length * 50 + 30,
+        H * 0.58
+      )
+      if (this.hitBtn(x, y, btnX, inviteY, btnW, 52)) this.onInviteFriend()
+      else if (this.hitBtn(x, y, btnX, inviteY + 66, btnW, 56)) this.onHostStartGame()
     }
   }
 
   async onCreateRoom() {
     try {
       this.roomId = await this.network.createRoom()
+      this.onlinePlayers = this.network.players
       this.addLog('房间已创建: ' + this.roomId)
     } catch (err) { this.addLog('创建失败: ' + err.message) }
   }
@@ -271,10 +330,20 @@ export default class MainGame {
   }
 
   onCopyRoomId() {
-    if (this.roomId) {
-      wx.setClipboardData({ data: this.roomId })
-      this.addLog('房间号已复制')
-    }
+    if (!this.roomId) return
+    wx.setClipboardData({
+      data: this.roomId,
+      success: () => this.addLog('房间号 ' + this.roomId + ' 已复制'),
+      fail: () => {
+        // 剪贴板权限不足时，直接显示房间号让用户手动记录
+        wx.showModal({
+          title: '房间号',
+          content: this.roomId,
+          showCancel: false,
+          confirmText: '知道了'
+        })
+      }
+    })
   }
 
   onInviteFriend() {
