@@ -32,6 +32,7 @@ export default class MainGame {
     this.renderer.start()
 
     this.network = new WxNetwork()
+    this.cloudInited = false
     this.game = null
     this.screen = SCREEN.MENU
     this.mode = 'ai'       // 'ai' | 'online'
@@ -147,7 +148,17 @@ export default class MainGame {
     this.addLog('正在登录微信...')
 
     try {
-      wx.cloud.init({ traceUser: true })
+      // 延迟初始化云开发（只在需要时）
+      if (wx.cloud && !this.cloudInited) {
+        try {
+          wx.cloud.init({ traceUser: true })
+          this.cloudInited = true
+        } catch (e) {
+          this.addLog('❌ 云开发未开通，请在微信开发者工具中开通')
+          this.addLog('提示：点顶部"云开发"按钮 → 开通环境')
+          return
+        }
+      }
       const user = await this.network.login()
       this.addLog('已登录: ' + user.nickName)
     } catch (err) {
