@@ -5,5 +5,7 @@
     "request": 10000,
     "connectSocket": 10000
   },
-  "cloud": true
+  "cloud": true,
+  "shareAppMessage": true,
+  "shareTimeline": false
 }

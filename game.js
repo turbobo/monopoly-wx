@@ -3,6 +3,17 @@
  */
 import MainGame from './js/main.js'
 
-// 云开发延迟到在线模式时才初始化（避免未开通时崩溃）
 // 启动游戏
-new MainGame()
+const game = new MainGame()
+
+// 检查是否从分享卡片进入（好友邀请）
+try {
+  const launchOpts = wx.getLaunchOptionsSync()
+  const query = launchOpts.query || {}
+  if (query.roomId) {
+    console.log('从分享卡片进入，房间号:', query.roomId)
+    game.autoJoinFromShare(query.roomId)
+  }
+} catch (e) {
+  console.warn('获取启动参数失败:', e.message)
+}

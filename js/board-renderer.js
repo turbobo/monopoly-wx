@@ -43,21 +43,31 @@ export class BoardRenderer {
     const sysInfo = wx.getSystemInfoSync()
     const screenWidth = sysInfo.screenWidth
     const screenHeight = sysInfo.screenHeight
+    // 与 MainGame 保持一致，使用主 canvas 的 dpr（不超过 2）
     const dpr = Math.min(sysInfo.pixelRatio || 1, 2)
     this.dpr = dpr
-    const isMobile = screenWidth < 768
-    const maxW = isMobile
-      ? Math.min(screenWidth - 16, screenHeight * 0.55)
-      : Math.min(screenWidth * 0.6, screenHeight * 0.9)
-    const w = Math.min(screenWidth - 8, screenHeight - 8, maxW)
-    this.canvas.width = w * dpr
-    this.canvas.height = w * dpr
-    this.size = w * dpr
+
+    // 棋盘边长：占屏幕宽度，留出顶部信息栏和底部UI的空间
+    // 顶部预留 24px（CSS像素），底部预留屏幕高度45%
+    const boardTop = 24
+    const maxBoardH = screenHeight * 0.52
+    const maxBoardW = screenWidth - 8
+    const boardSizeCss = Math.min(maxBoardW, maxBoardH)
+
+    // 不再修改 canvas.width/height（由 MainGame 统一设置全屏大小）
+    // 用物理像素记录棋盘绘制区域
+    this.size = boardSizeCss * dpr
     this.tileSize = this.size / 8.5
     this.cornerSize = this.tileSize * 1.3
-    // Store the CSS-pixel offset for hit testing (canvas centered on screen)
-    this.canvasLeft = (screenWidth - w) / 2
-    this.canvasTop = (screenHeight - w) / 2
+
+    // 记录棋盘在屏幕上的 CSS 像素位置（用于 hitTest）
+    this.boardCssSize = boardSizeCss
+    this.boardCssTop = boardTop
+    this.boardCssLeft = (screenWidth - boardSizeCss) / 2
+
+    // 兼容旧代码引用
+    this.canvasLeft = this.boardCssLeft
+    this.canvasTop = this.boardCssTop
   }
 
   start() {
@@ -258,9 +268,22 @@ export class BoardRenderer {
     const useEffects = effects || this.lastEffects
 
     const { ctx, size } = this
-    ctx.clearRect(0, 0, size, size)
+    // MainGame 已经 ctx.scale(dpr, dpr)，这里的坐标都是 CSS 像素
+    // 棋盘绘制原点（CSS像素）
+    const ox = this.boardCssLeft
+    const oy = this.boardCssTop
+    // 棋盘在 CSS 像素下的尺寸
+    const cssSize = this.boardCssSize
 
-    // 高级深蓝背景（与设置界面一致）
+    // 只清除棋盘区域
+    ctx.clearRect(ox, oy, cssSize, cssSize)
+
+    ctx.save()
+    ctx.translate(ox, oy)
+    // 将棋盘内部坐标（物理像素）缩放回 CSS 像素
+    ctx.scale(1 / this.dpr, 1 / this.dpr)
+
+    // 高级深蓝背景
     const bgGrad = ctx.createRadialGradient(size * 0.4, size * 0.35, 0, size / 2, size / 2, size * 0.75)
     bgGrad.addColorStop(0, '#243040')
     bgGrad.addColorStop(0.5, '#1a2332')
@@ -301,6 +324,9 @@ export class BoardRenderer {
     this.drawFloatingTexts()
     this.drawParticles()
     this.updateDiceAnim()
+
+    // 还原棋盘区域平移
+    ctx.restore()
   }
 
   // ===== 格子位置 =====
@@ -323,9 +349,12 @@ export class BoardRenderer {
   // 将屏幕坐标转换为棋盘格子索引，未命中返回 -1
   hitTest(clientX, clientY) {
     const dpr = this.dpr
-    // In WeChat mini-game the canvas is drawn at an offset stored during resize()
-    const px = (clientX - this.canvasLeft) * dpr
-    const py = (clientY - this.canvasTop) * dpr
+    // 转换为棋盘内部物理像素坐标（减去棋盘左上角的 CSS 偏移，再乘以 dpr）
+    const px = (clientX - this.boardCssLeft) * dpr
+    const py = (clientY - this.boardCssTop) * dpr
+
+    // 超出棋盘范围直接返回 -1
+    if (px < 0 || py < 0 || px > this.size || py > this.size) return -1
 
     for (let i = 0; i < BOARD_SIZE; i++) {
       const pos = this.getTilePosition(i)
@@ -342,8 +371,8 @@ export class BoardRenderer {
     const pos = this.getTilePosition(index)
     const dpr = this.dpr
     return {
-      x: this.canvasLeft + (pos.x + pos.w / 2) / dpr,
-      y: this.canvasTop + (pos.y + pos.h / 2) / dpr,
+      x: this.boardCssLeft + (pos.x + pos.w / 2) / dpr,
+      y: this.boardCssTop + (pos.y + pos.h / 2) / dpr,
     }
   }
 
@@ -382,14 +411,14 @@ export class BoardRenderer {
         ctx.font = '30px sans-serif'
         ctx.fillText(tile.emoji, cx, cy - 12)
         ctx.fillStyle = '#e8e8e8'
-        ctx.font = 'bold 17px "Noto Sans SC", sans-serif'
+        ctx.font = 'bold 17px sans-serif'
         ctx.fillText(tile.name, cx, cy + 20)
       } else {
         ctx.font = '22px sans-serif'
         ctx.fillText(tile.emoji, cx, cy - 16)
 
         ctx.fillStyle = '#f0f0f0'
-        ctx.font = 'bold 16px "Noto Sans SC", sans-serif'
+        ctx.font = 'bold 16px sans-serif'
         ctx.fillText(tile.name, cx, cy + 5)
 
         if (owner) {
@@ -397,7 +426,7 @@ export class BoardRenderer {
           ctx.fillText(owner.avatar, cx, cy + 23)
         } else if (tile.price > 0) {
           ctx.fillStyle = '#8899aa'
-          ctx.font = '13px "Noto Sans SC", sans-serif'
+          ctx.font = '13px sans-serif'
           ctx.fillText('\u00a5' + tile.price, cx, cy + 23)
         }
       }
@@ -429,13 +458,13 @@ export class BoardRenderer {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
 
     ctx.fillStyle = 'rgba(139,92,246,0.15)'
-    ctx.font = 'bold 44px "Noto Sans SC", sans-serif'
+    ctx.font = 'bold 44px sans-serif'
     ctx.fillText('\u5927\u5bcc\u7fc1', cx + 2, cy - 38)
     ctx.fillStyle = '#8b5cf6'
-    ctx.font = 'bold 42px "Noto Sans SC", sans-serif'
+    ctx.font = 'bold 42px sans-serif'
     ctx.fillText('\u5927\u5bcc\u7fc1', cx, cy - 40)
     ctx.fillStyle = '#6366f1'
-    ctx.font = '24px "Noto Sans SC", sans-serif'
+    ctx.font = '24px sans-serif'
     ctx.fillText('\u4e2d\u56fd\u884c', cx, cy - 5)
 
     if (this.diceAnim.active) {
@@ -537,7 +566,7 @@ export class BoardRenderer {
         // 背景胶囊
         const total = this.lastDice[0] + this.lastDice[1]
         const text = '' + total
-        ctx.font = 'bold 28px "Noto Sans SC", sans-serif'
+        ctx.font = 'bold 28px sans-serif'
         const textW = ctx.measureText(text).width + 30
         ctx.fillStyle = 'rgba(245,158,11,0.15)'
         this.roundedRect(-textW / 2, -18, textW, 36, 18)
@@ -818,7 +847,7 @@ export class BoardRenderer {
 
     // 玩家名（当前玩家显示）
     if (isCurrent) {
-      ctx.font = 'bold 11px "Noto Sans SC", sans-serif'
+      ctx.font = 'bold 11px sans-serif'
       const nameW = ctx.measureText(p.name).width + 12
       ctx.fillStyle = p.color
       this.roundedRect(tokenX - nameW / 2, labelStartY - 7, nameW, 14, 7)
@@ -831,7 +860,7 @@ export class BoardRenderer {
     // 现金（紧凑显示）
     const cashY = labelStartY + (isCurrent ? 15 : 0)
     const cashText = '\u00a5' + p.money
-    ctx.font = 'bold ' + (isCurrent ? 11 : 10) + 'px "Noto Sans SC", sans-serif'
+    ctx.font = 'bold ' + (isCurrent ? 11 : 10) + 'px sans-serif'
     const cashW = ctx.measureText(cashText).width + 8
     ctx.fillStyle = 'rgba(0,0,0,0.7)'
     this.roundedRect(tokenX - cashW / 2, cashY - 6, cashW, 12, 6)
@@ -852,7 +881,7 @@ export class BoardRenderer {
 
       ctx.save(); ctx.globalAlpha = alpha
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.font = 'bold ' + ft.fontSize + 'px "Noto Sans SC", sans-serif'
+      ctx.font = 'bold ' + ft.fontSize + 'px sans-serif'
       const textW = ctx.measureText(ft.text).width
       const pillW = textW + 20, pillH = ft.fontSize + 10
       ctx.fillStyle = 'rgba(0,0,0,0.7)'
