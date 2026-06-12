@@ -1,33 +1,67 @@
 /**
  * 大富翁中国行 - 音效引擎 (微信小游戏版)
- * 微信小游戏不支持 Web Audio API，使用 wx.createInnerAudioContext() 播放音频文件
- * 当前为静音桩函数，后续可添加音频文件到 images/ 目录
+ * 音频文件放在 audio/ 目录下，文件不存在时完全静默不报错
  */
 
 let muted = false
+// 记录哪些文件已确认存在/不存在，避免重复检测
+const fileExists = {}
+const audioPool = {}
 
 export function setMuted(m) { muted = m }
 export function isMuted() { return muted }
 
-// 尝试播放音频文件（文件不存在时静默失败）
 function tryPlay(name) {
   if (muted) return
-  try {
-    const audio = wx.createInnerAudioContext()
-    audio.src = 'audio/' + name + '.mp3'
-    audio.play()
-    audio.onEnded(() => audio.destroy())
-    audio.onError(() => audio.destroy())
-  } catch (e) {
-    // 静默失败
+  const path = 'audio/' + name + '.mp3'
+
+  // 已知文件不存在，直接跳过
+  if (fileExists[path] === false) return
+
+  // 已知文件存在，直接播放
+  if (fileExists[path] === true) {
+    playAudio(name, path)
+    return
   }
+
+  // 首次：先检测文件是否存在
+  wx.getFileSystemManager().access({
+    path,
+    success: () => {
+      fileExists[path] = true
+      playAudio(name, path)
+    },
+    fail: () => {
+      // 文件不存在，记录后跳过，不产生任何报错
+      fileExists[path] = false
+    }
+  })
 }
 
-export function playDiceRoll()    { tryPlay('dice_roll') }
-export function playDiceLand()    { tryPlay('dice_land') }
-export function playStepSound()   { tryPlay('step') }
-export function playBuySound()    { tryPlay('buy') }
-export function playPaySound()    { tryPlay('pay') }
-export function playBankruptSound() { tryPlay('bankrupt') }
-export function playPlayerJoinSound() { tryPlay('join') }
+function playAudio(name, path) {
+  try {
+    let audio = audioPool[name]
+    if (!audio) {
+      audio = wx.createInnerAudioContext()
+      audio.src = path
+      audio.obeyMuteSwitch = false
+      audio.onError(() => {
+        delete audioPool[name]
+        try { audio.destroy() } catch (e) {}
+      })
+      audioPool[name] = audio
+    }
+    audio.stop()
+    audio.play()
+  } catch (e) {}
+}
+
+export function playDiceRoll()         { tryPlay('dice_roll') }
+export function playDiceLand()         { tryPlay('dice_land') }
+export function playStepSound()        { tryPlay('step') }
+export function playBuySound()         { tryPlay('buy') }
+export function playPaySound()         { tryPlay('pay') }
+export function playBankruptSound()    { tryPlay('bankrupt') }
+export function playMove()             { tryPlay('step') }
+export function playPlayerJoinSound()  { tryPlay('join') }
 export function playPlayerLeaveSound() { tryPlay('leave') }

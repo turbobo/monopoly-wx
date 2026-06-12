@@ -388,77 +388,171 @@ export default class MainGame {
   drawGameUI() {
     const ctx = this.ctx, g = this.game
     if (!g) return
+    const W = this.W, H = this.H
 
     const boardTop = this.renderer.boardCssTop
     const boardBottom = this.getBoardBottom()
+    const panelTop = boardBottom + 8
+    const panelH = H - panelTop - 50  // 底部按钮预留 50px
 
-    // 顶部信息栏
+    // ===== 当前回合头部 =====
     const cp = g.players[g.currentPlayer]
+    const headerH = 44
+    ctx.fillStyle = '#1a2332'
+    this.roundRect(8, panelTop, W - 16, headerH, 12)
+    ctx.fill()
+
+    // 顶部色条
+    ctx.fillStyle = cp.color || '#f59e0b'
+    this.roundRect(8, panelTop, W - 16, 3, 3)
+    ctx.fill()
+
+    // 头像 + 名称
     ctx.textAlign = 'left'
+    ctx.font = '20px sans-serif'
+    ctx.fillStyle = '#fff'
+    ctx.fillText(cp.avatar, 20, panelTop + 30)
+
+    ctx.font = 'bold 15px sans-serif'
+    ctx.fillStyle = '#e5e7eb'
+    ctx.fillText(cp.name + ' 的回合', 46, panelTop + 25)
+
+    ctx.font = '11px sans-serif'
+    ctx.fillStyle = '#6b7280'
+    ctx.fillText('第' + g.round + '回合', 46, panelTop + 38)
+
+    // 金钱
+    ctx.textAlign = 'right'
     ctx.font = 'bold 14px sans-serif'
-    ctx.fillStyle = '#f59e0b'
-    ctx.fillText('第' + g.round + '回合', 12, boardTop + 16)
+    ctx.fillStyle = '#10b981'
+    ctx.fillText('¥' + cp.money, W - 20, panelTop + 25)
 
-    ctx.fillStyle = cp.color || '#fff'
-    ctx.fillText(cp.avatar + ' ' + cp.name, 80, boardTop + 16)
+    ctx.font = '11px sans-serif'
+    ctx.fillStyle = '#6b7280'
+    const totalWealth = cp.money + cp.properties.reduce((s, ti) => s + BOARD[ti].price, 0)
+    ctx.fillText('资产 ¥' + totalWealth, W - 20, panelTop + 38)
 
-    // 骰子按钮：AI模式下判断当前玩家是否为人类玩家(id=0)，在线模式判断 openId
+    // ===== 玩家列表 =====
+    const listTop = panelTop + headerH + 6
+    const rowH = 36
+    for (let i = 0; i < g.players.length; i++) {
+      const p = g.players[i]
+      const y = listTop + i * rowH
+      const isCurrent = i === g.currentPlayer
+
+      // 行背景
+      ctx.fillStyle = isCurrent ? 'rgba(245,158,11,0.10)' : '#111827'
+      this.roundRect(8, y, W - 16, rowH - 4, 8)
+      ctx.fill()
+
+      // 当前玩家指示
+      if (isCurrent) {
+        ctx.fillStyle = '#f59e0b'
+        this.roundRect(8, y, 3, rowH - 4, 3)
+        ctx.fill()
+      }
+
+      // 头像 + 名称
+      ctx.textAlign = 'left'
+      ctx.font = '14px sans-serif'
+      ctx.fillStyle = p.bankrupt ? '#4b5563' : '#d1d5db'
+      ctx.fillText(p.avatar, 18, y + 22)
+      ctx.font = (isCurrent ? 'bold ' : '') + '13px sans-serif'
+      ctx.fillText(p.name, 38, y + 22)
+
+      // 地皮数
+      ctx.textAlign = 'center'
+      ctx.font = '11px sans-serif'
+      ctx.fillStyle = '#6b7280'
+      ctx.fillText(p.properties.length + '块', W / 2 + 20, y + 22)
+
+      // 金钱
+      ctx.textAlign = 'right'
+      ctx.font = '13px sans-serif'
+      ctx.fillStyle = p.bankrupt ? '#ef4444' : '#10b981'
+      ctx.fillText('¥' + p.money, W - 20, y + 22)
+    }
+
+    // ===== 操作区域 =====
+    const actionTop = listTop + g.players.length * rowH + 6
     const currentIsHuman = this.mode === 'ai'
       ? !g.players[g.currentPlayer].isAI
       : g.players[g.currentPlayer].openId === this.network.getOpenId()
-    if (currentIsHuman && !this.rolling && g.phase === 'roll') {
-      const cx = this.W / 2
-      this.drawButton(cx - 55, boardBottom + 4, 110, 42, '🎲 掷骰子', '#f59e0b', 'game-roll')
+
+    const cx = W / 2
+
+    // 购买提示
+    if (this.buyPrompt) {
+      const tile = BOARD[this.buyPrompt.tileIndex]
+      ctx.textAlign = 'center'
+      ctx.font = '13px sans-serif'
+      ctx.fillStyle = '#d1d5db'
+      ctx.fillText(tile.name + ' ¥' + tile.price, cx, actionTop + 12)
+
+      this.drawButton(cx - 100, actionTop + 18, 90, 40, '✅ 购买', '#10b981', 'buy-yes')
+      this.drawButton(cx + 10, actionTop + 18, 90, 40, '❌ 跳过', '#ef4444', 'buy-no')
+    } else if (currentIsHuman && !this.rolling && g.phase === 'roll') {
+      // 掷骰子按钮
+      this.drawButton(cx - 70, actionTop + 6, 140, 46, '🎲 掷骰子', '#f59e0b', 'game-roll')
+    } else if (this.rolling) {
+      ctx.textAlign = 'center'
+      ctx.font = '14px sans-serif'
+      ctx.fillStyle = '#6b7280'
+      ctx.fillText('掷骰中...', cx, actionTop + 30)
     }
 
-    // 骰子结果显示
+    // 骰子结果
     if (this.diceResult) {
       ctx.textAlign = 'center'
-      ctx.font = 'bold 20px sans-serif'
+      ctx.font = 'bold 18px sans-serif'
       ctx.fillStyle = '#fff'
-      ctx.fillText(this.diceResult[0] + ' + ' + this.diceResult[1] + ' = ' + (this.diceResult[0] + this.diceResult[1]), this.W / 2, boardBottom + 68)
+      const dr = this.diceResult
+      ctx.fillText(dr[0] + ' + ' + dr[1] + ' = ' + (dr[0] + dr[1]), cx, actionTop + 66)
     }
 
     // 道具卡按钮
     const myPlayer = g.players.find(p => p.openId === this.network.getOpenId() || (this.mode === 'ai' && p.id === 0))
     if (myPlayer && myPlayer.cards && myPlayer.cards.length > 0) {
-      this.drawButton(this.W - 80, boardBottom + 4, 70, 32, '🃏 ' + myPlayer.cards.length, '#8b5cf6', 'game-cards')
+      this.drawButton(W - 80, panelTop, 68, 30, '🃏 ' + myPlayer.cards.length, '#8b5cf6', 'game-cards')
     }
-
-    // 玩家信息面板
-    this.drawPlayerPanel(boardBottom + 80)
-
-    // 日志区域
-    this.drawLogArea(boardBottom + 80 + g.players.length * 32 + 10, this.W - 20, 150)
 
     // 道具卡面板
     if (this.showCards && myPlayer) this.drawCardPanel(myPlayer)
 
-    // 控制按钮
-    this.drawButton(12, this.H - 44, 60, 32, this.paused ? '▶' : '⏸', '#374151', 'game-pause')
-    this.drawButton(80, this.H - 44, 60, 32, this.muted ? '🔇' : '🔊', '#374151', 'game-mute')
-    this.drawButton(this.W - 72, this.H - 44, 60, 32, '退出', '#991b1b', 'game-exit')
+    // 状态提示
+    this.drawLogArea(H - 58, W - 40, 20)
+
+    // 底部控制按钮
+    this.drawButton(12, H - 44, 56, 32, this.paused ? '▶' : '⏸', '#374151', 'game-pause')
+    this.drawButton(76, H - 44, 56, 32, this.muted ? '🔇' : '🔊', '#374151', 'game-mute')
+    this.drawButton(W - 68, H - 44, 56, 32, '退出', '#991b1b', 'game-exit')
   }
 
   handleGameTouch(x, y) {
     const g = this.game
     if (!g) return
+    const W = this.W, H = this.H
     const boardBottom = this.getBoardBottom()
-    const cx = this.W / 2
+    const cx = W / 2
+    const panelTop = boardBottom + 8
+    const headerH = 44
+    const listTop = panelTop + headerH + 6
+    const rowH = 36
+    const actionTop = listTop + g.players.length * rowH + 6
 
     // 掷骰子
-    if (this.hitBtn(x, y, cx - 55, boardBottom + 4, 110, 42)) this.handleRoll()
+    if (this.hitBtn(x, y, cx - 70, actionTop + 6, 140, 46)) this.handleRoll()
     // 道具卡
-    else if (this.hitBtn(x, y, this.W - 80, boardBottom + 4, 70, 32)) this.showCards = !this.showCards
+    else if (this.hitBtn(x, y, W - 80, panelTop, 68, 30)) this.showCards = !this.showCards
     // 购买确认
-    else if (this.buyPrompt && this.hitBtn(x, y, cx - 90, this.H / 2 + 30, 80, 40)) this.handleBuy(true)
-    else if (this.buyPrompt && this.hitBtn(x, y, cx + 10, this.H / 2 + 30, 80, 40)) this.handleBuy(false)
+    else if (this.buyPrompt && this.hitBtn(x, y, cx - 100, actionTop + 18, 90, 40)) this.handleBuy(true)
+    else if (this.buyPrompt && this.hitBtn(x, y, cx + 10, actionTop + 18, 90, 40)) this.handleBuy(false)
     // 暂停
-    else if (this.hitBtn(x, y, 12, this.H - 44, 60, 32)) this.paused = !this.paused
+    else if (this.hitBtn(x, y, 12, H - 44, 56, 32)) this.paused = !this.paused
     // 静音
-    else if (this.hitBtn(x, y, 80, this.H - 44, 60, 32)) { this.muted = !this.muted; Sound.setMuted(this.muted) }
+    else if (this.hitBtn(x, y, 76, H - 44, 56, 32)) { this.muted = !this.muted; Sound.setMuted(this.muted) }
     // 退出
-    else if (this.hitBtn(x, y, this.W - 72, this.H - 44, 60, 32)) {
+    else if (this.hitBtn(x, y, W - 68, H - 44, 56, 32)) {
       this.network.leaveRoom()
       this.game = null; this.screen = SCREEN.MENU
     }

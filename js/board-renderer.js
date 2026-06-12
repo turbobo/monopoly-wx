@@ -46,9 +46,9 @@ export class BoardRenderer {
     const dpr = Math.min(sysInfo.pixelRatio || 1, 2)
     this.dpr = dpr
 
-    // 棋盘边长（CSS像素），顶部留 24px，底部留屏幕高度 48%
+    // 棋盘边长（CSS像素），顶部留 24px，底部留屏幕高度 55% 给信息面板
     const boardTop = 24
-    const maxBoardH = screenHeight * 0.52
+    const maxBoardH = screenHeight * 0.45
     const maxBoardW = screenWidth - 8
     const boardSizeCss = Math.min(maxBoardW, maxBoardH)
 
