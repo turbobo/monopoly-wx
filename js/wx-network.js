@@ -1,22 +1,31 @@
 /**
  * 微信联机对战模块
- * 使用微信云开发实现房间管理和状态同步 (Host-Authority)
+ * 使用 GoEasy PubSub 实现房间管理和状态同步 (Host-Authority)
  */
+// @ts-ignore
+import GoEasy from './libs/goeasy.min.js'
+
+// GoEasy AppKey - 需要替换为你自己的 AppKey
+// 注册地址: https://www.goeasy.io
+const GOEASY_APPKEY = 'your-appkey-here'
 
 export class WxNetwork {
   constructor() {
-    this.openId = ''
+    this.clientId = ''
     this.nickName = ''
     this.avatarUrl = ''
     this.roomId = ''
     this.isHost = false
-    this.watcher = null
     this.lastState = null
     this.messageHandlers = []
     this.pingTimer = null
+    this.goeasy = null
+    this.connected = false
+    this.players = []
+    this.hostId = ''
   }
 
-  getOpenId() { return this.openId }
+  getOpenId() { return this.clientId }
   getIsHost() { return this.isHost }
   getRoomId() { return this.roomId }
 
@@ -26,24 +35,45 @@ export class WxNetwork {
     for (const h of this.messageHandlers) h(type, data)
   }
 
-  // ===== 微信登录 =====
+  // ===== 初始化 GoEasy =====
+  initGoEasy() {
+    if (this.goeasy) return
+    // @ts-ignore
+    GoEasy.init({
+      host: 'hangzhou.goeasy.io',
+      appkey: GOEASY_APPKEY,
+      modules: ['pubsub']
+    })
+    this.goeasy = GoEasy
+  }
+
+  // ===== 登录 =====
   login() {
     return new Promise((resolve, reject) => {
-      wx.login({
-        success: (res) => {
-          if (!res.code) { reject(new Error('wx.login failed')); return }
-          wx.cloud.callFunction({
-            name: 'create-room',
-            data: { action: 'get-openid', code: res.code },
-            success: (cfRes) => {
-              this.openId = (cfRes.result && cfRes.result.openId) || ''
-              this.nickName = '玩家' + this.openId.slice(-4)
-              resolve({ openId: this.openId, nickName: this.nickName })
-            },
-            fail: (err) => reject(err)
-          })
+      if (GOEASY_APPKEY === 'your-appkey-here') {
+        reject(new Error('请先配置 GoEasy AppKey'))
+        return
+      }
+
+      this.initGoEasy()
+
+      // 生成随机 ID（代替 openId）
+      this.clientId = 'wx-' + Math.random().toString(36).slice(2, 8)
+      this.nickName = '玩家' + this.clientId.slice(-4)
+
+      // 连接 GoEasy
+      this.goeasy.connect({
+        id: this.clientId,
+        data: { name: this.nickName },
+        onSuccess: () => {
+          this.connected = true
+          console.log('[WxNetwork] GoEasy connected')
+          resolve({ openId: this.clientId, nickName: this.nickName })
         },
-        fail: (err) => reject(err)
+        onFailed: (err) => {
+          console.error('[WxNetwork] GoEasy connect failed:', err)
+          reject(new Error('连接失败: ' + (err.message || err)))
+        }
       })
     })
   }
@@ -56,145 +86,262 @@ export class WxNetwork {
   // ===== 创建房间 =====
   createRoom() {
     return new Promise((resolve, reject) => {
-      wx.cloud.callFunction({
-        name: 'create-room',
-        data: {
-          action: 'create',
-          hostId: this.openId,
-          hostName: this.nickName,
-          hostAvatar: this.avatarUrl,
-        },
-        success: (res) => {
-          this.roomId = (res.result && res.result.roomId) || ''
-          this.isHost = true
-          this.watchRoom()
-          this.startPing()
-          resolve(this.roomId)
-        },
-        fail: (err) => reject(err)
+      this.roomId = Math.random().toString(36).slice(2, 8).toUpperCase()
+      this.isHost = true
+      this.hostId = this.clientId
+      this.players = [{
+        id: this.clientId,
+        name: this.nickName,
+        openId: this.clientId,
+        isHost: true,
+        ready: true
+      }]
+
+      // 订阅房间频道
+      this.subscribeRoom()
+
+      // 广播房间创建
+      this.publish('room-created', {
+        roomId: this.roomId,
+        hostId: this.clientId,
+        hostName: this.nickName
       })
+
+      resolve(this.roomId)
     })
   }
 
   // ===== 加入房间 =====
   joinRoom(roomId) {
     return new Promise((resolve, reject) => {
-      wx.cloud.callFunction({
-        name: 'join-room',
-        data: {
-          action: 'join', roomId,
-          openId: this.openId,
-          name: this.nickName, avatar: this.avatarUrl,
-        },
-        success: (res) => {
-          this.roomId = roomId
-          this.isHost = false
-          this.watchRoom()
-          this.startPing()
-          resolve((res.result && res.result.players) || [])
-        },
-        fail: (err) => reject(err)
+      this.roomId = roomId
+      this.isHost = false
+
+      // 订阅房间频道
+      this.subscribeRoom()
+
+      // 发送加入请求
+      this.publish('player-join', {
+        roomId: this.roomId,
+        playerId: this.clientId,
+        playerName: this.nickName
       })
+
+      // 等待 Host 响应
+      this.joinTimeout = setTimeout(() => {
+        reject(new Error('加入超时，房间可能不存在或已满'))
+      }, 10000)
+
+      // 监听加入响应
+      this._onJoinResponse = (data) => {
+        if (data.playerId === this.clientId) {
+          clearTimeout(this.joinTimeout)
+          this.hostId = data.hostId
+          this.players = data.players || []
+          resolve(this.players)
+        }
+      }
     })
   }
 
-  // ===== 实时监听 =====
-  watchRoom() {
+  // ===== 订阅房间频道 =====
+  subscribeRoom() {
     if (!this.roomId) return
-    const db = wx.cloud.database()
-    this.watcher = db.collection('rooms').doc(this.roomId).watch({
-      onChange: (snapshot) => {
-        if (snapshot.type === 'init' || !(snapshot.docChanges && snapshot.docChanges.length)) return
-        for (const change of snapshot.docChanges) {
-          if (change.dataType === 'update' || change.dataType === 'replace') {
-            this.handleRoomUpdate(change.doc)
-          }
+    const channel = 'monopoly-' + this.roomId
+
+    this.goeasy.pubsub.subscribe({
+      channel: channel,
+      onMessage: (msg) => {
+        try {
+          const data = JSON.parse(msg.content)
+          this.handleMessage(data)
+        } catch (e) {
+          console.error('[WxNetwork] Parse error:', e)
         }
       },
-      onError: (err) => {
-        console.error('[WxNetwork] watch error:', err)
-        this.emit('error', { message: '连接中断' })
+      onSuccess: () => {
+        console.log('[WxNetwork] Subscribed to', channel)
+      },
+      onFailed: (err) => {
+        console.error('[WxNetwork] Subscribe failed:', err)
       }
     })
   }
 
-  handleRoomUpdate(room) {
-    if (!room) return
-    this.emit('room-info', {
-      roomId: room.roomId,
-      players: room.players,
-      status: room.status,
+  // ===== 发布消息 =====
+  publish(type, payload) {
+    if (!this.roomId || !this.goeasy) return
+    const channel = 'monopoly-' + this.roomId
+    const content = JSON.stringify({
+      type,
+      from: this.clientId,
+      fromName: this.nickName,
+      payload,
+      timestamp: Date.now()
     })
-    if (room.gameState && room.gameState !== this.lastState) {
-      this.lastState = room.gameState
-      this.emit('game-state', { game: room.gameState, updatedAt: room.updatedAt })
-    }
-    // Host 监听 pendingActions（Guest 发来的操作）
-    if (this.isHost && room.pendingActions && room.pendingActions.length > 0) {
-      for (const action of room.pendingActions) {
-        this.emit('player-action', action)
+
+    this.goeasy.pubsub.publish({
+      channel: channel,
+      content: content,
+      onSuccess: () => {},
+      onFailed: (err) => {
+        console.error('[WxNetwork] Publish failed:', err)
       }
-      // 清除已处理的 actions
-      const db = wx.cloud.database()
-      db.collection('rooms').doc(this.roomId).update({ data: { pendingActions: [] } })
+    })
+  }
+
+  // ===== 处理收到的消息 =====
+  handleMessage(data) {
+    if (data.from === this.clientId) return // 忽略自己的消息
+
+    const { type, from, fromName, payload } = data
+
+    switch (type) {
+      case 'player-join':
+        if (this.isHost) this.handlePlayerJoin(from, fromName)
+        break
+
+      case 'join-response':
+        if (!this.isHost && this._onJoinResponse) {
+          this._onJoinResponse(payload)
+        }
+        break
+
+      case 'room-info':
+        if (!this.isHost) {
+          this.players = payload.players || []
+          this.emit('room-info', payload)
+        }
+        break
+
+      case 'game-state':
+        if (!this.isHost) {
+          this.handleGameState(payload)
+        }
+        break
+
+      case 'player-action':
+        if (this.isHost) {
+          this.emit('player-action', payload)
+        }
+        break
+
+      case 'player-leave':
+        this.handlePlayerLeave(from)
+        break
+
+      case 'ping':
+        // 心跳响应
+        break
     }
+  }
+
+  // ===== Host 处理玩家加入 =====
+  handlePlayerJoin(playerId, playerName) {
+    // 检查是否已存在
+    if (this.players.find(p => p.id === playerId)) return
+
+    // 添加玩家
+    this.players.push({
+      id: playerId,
+      name: playerName,
+      openId: playerId,
+      isHost: false,
+      ready: true
+    })
+
+    // 发送加入响应
+    this.publish('join-response', {
+      playerId: playerId,
+      hostId: this.clientId,
+      players: this.players
+    })
+
+    // 广播房间信息
+    this.broadcastRoomInfo()
+  }
+
+  // ===== 处理玩家离开 =====
+  handlePlayerLeave(playerId) {
+    this.players = this.players.filter(p => p.id !== playerId)
+    this.broadcastRoomInfo()
+    this.emit('player-leave', { playerId })
+  }
+
+  // ===== Host 广播房间信息 =====
+  broadcastRoomInfo() {
+    this.publish('room-info', {
+      roomId: this.roomId,
+      players: this.players,
+      status: 'waiting'
+    })
   }
 
   // ===== Host 广播游戏状态 =====
   broadcastGameState(gameState) {
     if (!this.isHost || !this.roomId) return Promise.resolve()
-    const db = wx.cloud.database()
-    return new Promise((resolve, reject) => {
-      db.collection('rooms').doc(this.roomId).update({
-        data: { gameState, status: 'playing', updatedAt: Date.now() },
-        success: () => resolve(),
-        fail: (err) => reject(err)
-      })
+    this.publish('game-state', {
+      game: gameState,
+      updatedAt: Date.now()
     })
+    return Promise.resolve()
+  }
+
+  // ===== 处理游戏状态更新 =====
+  handleGameState(payload) {
+    if (payload.game && payload.game !== this.lastState) {
+      this.lastState = payload.game
+      this.emit('game-state', payload)
+    }
   }
 
   // ===== Guest 发送操作 =====
   sendAction(actionType, payload) {
-    return new Promise((resolve, reject) => {
-      wx.cloud.callFunction({
-        name: 'game-action',
-        data: {
-          roomId: this.roomId, openId: this.openId,
-          playerName: this.nickName, actionType, payload,
-        },
-        success: () => resolve(),
-        fail: (err) => reject(err)
-      })
+    this.publish('player-action', {
+      actionType,
+      payload,
+      playerId: this.clientId,
+      playerName: this.nickName
     })
+    return Promise.resolve()
   }
 
+  // ===== 心跳 =====
   startPing() {
     this.pingTimer = setInterval(() => {
       if (!this.roomId) return
-      wx.cloud.callFunction({
-        name: 'game-action',
-        data: { roomId: this.roomId, openId: this.openId, actionType: 'ping', payload: {} },
-        fail: () => {}
-      })
+      this.publish('ping', {})
     }, 15000)
   }
 
+  // ===== 离开房间 =====
   leaveRoom() {
-    if (this.watcher) { this.watcher.close(); this.watcher = null }
-    if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null }
-    if (!this.roomId) return Promise.resolve()
-    return new Promise((resolve) => {
-      wx.cloud.callFunction({
-        name: 'game-action',
-        data: { roomId: this.roomId, openId: this.openId, actionType: 'leave', payload: {} },
-        success: () => { this.roomId = ''; this.isHost = false; resolve() },
-        fail: () => { this.roomId = ''; this.isHost = false; resolve() }
-      })
-    })
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
+    }
+    if (this.roomId) {
+      this.publish('player-leave', {})
+      // 取消订阅
+      try {
+        this.goeasy.pubsub.unsubscribe({
+          channel: 'monopoly-' + this.roomId
+        })
+      } catch (e) {}
+    }
+    this.roomId = ''
+    this.isHost = false
+    this.players = []
+    return Promise.resolve()
   }
 
   destroy() {
     this.leaveRoom()
+    if (this.goeasy && this.connected) {
+      try {
+        this.goeasy.disconnect()
+      } catch (e) {}
+    }
     this.messageHandlers = []
   }
 }

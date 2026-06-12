@@ -47,8 +47,8 @@
     "disableSWC": true
   },
   "compileType": "game",
-  "libVersion": "3.3.4",
-  "appid": "wx2dd7af5760ee0af0",
+  "libVersion": "3.16.1",
+  "appid": "wxb417b71df56c4a1c",
   "projectname": "monopoly-wx",
   "condition": {},
   "simulatorPluginLibVersion": {},

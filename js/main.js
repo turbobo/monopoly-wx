@@ -33,7 +33,6 @@ export default class MainGame {
     // renderer.tick() 由主循环统一调用，不再单独启动动画循环
 
     this.network = new WxNetwork()
-    this.cloudInited = false
     this.game = null
     this.screen = SCREEN.MENU
     this.mode = 'ai'       // 'ai' | 'online'
@@ -158,27 +157,14 @@ export default class MainGame {
   async startOnlineMode() {
     this.screen = SCREEN.LOBBY
     this.mode = 'online'
-    this.cloudError = false
-    this.addLog('正在登录微信...')
+    this.addLog('正在连接服务器...')
 
     try {
-      // 延迟初始化云开发（只在需要时）
-      if (wx.cloud && !this.cloudInited) {
-        try {
-          wx.cloud.init({ env: 'prod', traceUser: true })
-          this.cloudInited = true
-        } catch (e) {
-          console.error('云开发初始化失败:', e)
-          this.cloudError = true
-          this.addLog('❌ 云开发未开通')
-          this.addLog('请在微信开发者工具顶部点"云开发"按钮开通')
-          return
-        }
-      }
       const user = await this.network.login()
-      this.addLog('已登录: ' + user.nickName)
+      this.addLog('已连接: ' + user.nickName)
     } catch (err) {
-      this.addLog('登录失败: ' + err.message)
+      this.addLog('连接失败: ' + err.message)
+      this.addLog('请检查 GoEasy AppKey 配置')
     }
   }
 
@@ -193,26 +179,6 @@ export default class MainGame {
     ctx.fillStyle = '#f59e0b'
     ctx.font = 'bold 32px sans-serif'
     ctx.fillText('在线对战', cx, H * 0.10)
-
-    // 云开发未开通时显示错误提示
-    if (this.cloudError) {
-      ctx.fillStyle = '#ef4444'
-      ctx.font = 'bold 20px sans-serif'
-      ctx.fillText('❌ 云开发未开通', cx, H * 0.28)
-
-      ctx.fillStyle = '#9ca3af'
-      ctx.font = '16px sans-serif'
-      ctx.fillText('请在微信开发者工具中：', cx, H * 0.35)
-      ctx.fillText('1. 点顶部"云开发"按钮', cx, H * 0.41)
-      ctx.fillText('2. 开通环境（免费）', cx, H * 0.47)
-      ctx.fillText('3. 返回后重新点"在线对战"', cx, H * 0.53)
-
-      // 返回按钮
-      this.drawButton(20, H - 80, 100, 48, '← 返回', '#374151', 'lobby-back')
-      // 日志
-      this.drawLogArea(H * 0.79, this.W - 20, H * 0.12)
-      return
-    }
 
     // 创建房间按钮
     const createY = H * 0.18
@@ -263,14 +229,6 @@ export default class MainGame {
     const btnX = cx - btnW / 2
     const H = this.H
     const roomY = H * 0.44
-
-    // 云开发未开通时只响应返回按钮
-    if (this.cloudError) {
-      if (this.hitBtn(x, y, 20, H - 80, 100, 48)) {
-        this.screen = SCREEN.MENU
-      }
-      return
-    }
 
     const createY = H * 0.18
     const joinY = H * 0.30
@@ -337,18 +295,6 @@ export default class MainGame {
     this.addLog('正在加入房间: ' + roomId)
 
     try {
-      // 初始化云开发
-      if (wx.cloud && !this.cloudInited) {
-        try {
-          wx.cloud.init({ env: 'prod', traceUser: true })
-          this.cloudInited = true
-        } catch (e) {
-          this.cloudError = true
-          this.addLog('❌ 云开发未开通')
-          return
-        }
-      }
-
       await this.network.login()
       await this.network.joinRoom(roomId)
       this.roomId = roomId
