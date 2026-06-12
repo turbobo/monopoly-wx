@@ -15,8 +15,8 @@ const SCREEN = { MENU: 0, LOBBY: 1, GAME: 2 }
 
 export default class MainGame {
   constructor() {
-    // 微信小游戏主 canvas（全局变量）
-    this.canvas = canvas
+    // 微信小游戏主 canvas
+    this.canvas = wx.createCanvas()
     this.ctx = this.canvas.getContext('2d')
     const sys = wx.getSystemInfoSync()
     this.W = sys.screenWidth
