@@ -3,8 +3,8 @@
  * 替代 v3 的 page.tsx React UI，全部用 Canvas 绘制
  */
 import {
-  BOARD, BOARD_SIZE, createGame, executeTurn, buyProperty,
-  rollDice, aiDecision, totalWealth, rollDice as _rd,
+  BOARD, BOARD_SIZE, createGame, executeTurn, buyProperty, nextPlayer,
+  rollDice, aiDecision, totalWealth,
   useRemoteDice, useSwapCard, useRoadblockCard, useFreePassCard, usePriceHikeCard,
 } from './game-engine.js'
 import { BoardRenderer } from './board-renderer.js'
@@ -475,22 +475,24 @@ export default class MainGame {
 
     // ===== 操作区域 =====
     const actionTop = listTop + g.players.length * rowH + 6
+    if (!cp) return  // 防御：currentPlayer 越界时停止渲染
     const currentIsHuman = this.mode === 'ai'
-      ? !g.players[g.currentPlayer].isAI
-      : g.players[g.currentPlayer].openId === this.network.getOpenId()
+      ? !cp.isAI
+      : cp.openId === this.network.getOpenId()
 
     const cx = W / 2
 
     // 购买提示
     if (this.buyPrompt) {
-      const tile = BOARD[this.buyPrompt.tileIndex]
-      ctx.textAlign = 'center'
-      ctx.font = '13px sans-serif'
-      ctx.fillStyle = '#d1d5db'
-      ctx.fillText(tile.name + ' ¥' + tile.price, cx, actionTop + 12)
-
-      this.drawButton(cx - 100, actionTop + 18, 90, 40, '✅ 购买', '#10b981', 'buy-yes')
-      this.drawButton(cx + 10, actionTop + 18, 90, 40, '❌ 跳过', '#ef4444', 'buy-no')
+      const tile = this.buyPrompt.tile
+      if (tile) {
+        ctx.textAlign = 'center'
+        ctx.font = '13px sans-serif'
+        ctx.fillStyle = '#d1d5db'
+        ctx.fillText(tile.name + ' ¥' + tile.price, cx, actionTop + 12)
+        this.drawButton(cx - 100, actionTop + 18, 90, 40, '✅ 购买', '#10b981', 'buy-yes')
+        this.drawButton(cx + 10, actionTop + 18, 90, 40, '❌ 跳过', '#ef4444', 'buy-no')
+      }
     } else if (currentIsHuman && !this.rolling && g.phase === 'roll') {
       // 掷骰子按钮
       this.drawButton(cx - 70, actionTop + 6, 140, 46, '🎲 掷骰子', '#f59e0b', 'game-roll')
@@ -598,10 +600,28 @@ export default class MainGame {
     this.appendLogs(msgs)
     this.renderer.setCurrentPlayer(g.currentPlayer)
 
-    // 购买阶段
+    // 检测租金/税收/机会卡等事件并触发特效
+    for (const msg of msgs) {
+      if (typeof msg === 'string' && msg.includes('支付租金')) {
+        const rentMatch = msg.match(/¥(\d+)/)
+        if (rentMatch) {
+          this.renderer.showRentEffect(cp.position, parseInt(rentMatch[1]))
+        }
+      } else if (typeof msg === 'string' && msg.includes('罚款')) {
+        this.renderer.emitSparkle(this.renderer.size / 2, this.renderer.size / 2, 6)
+      }
+    }
+
+    // 购买阶段：记录需要决策的格子
     if (g.phase === 'action') {
       const tile = BOARD[cp.position]
-      this.buyPrompt = { tile, price: tile.price }
+      if (tile) {
+        this.buyPrompt = { tile, price: tile.price }
+      } else {
+        // 格子无效，直接跳过
+        g.phase = 'roll'
+        nextPlayer(g)
+      }
     }
 
     this.rolling = false
@@ -622,24 +642,36 @@ export default class MainGame {
     const g = this.game
     if (!g) return
     const cp = g.players[g.currentPlayer]
+    if (!cp) return
     const tile = BOARD[cp.position]
+    if (!tile) return
 
     if (buy) {
-      buyProperty(cp, tile.id)
-      Sound.playBuySound()
-      this.addLog('🏠 ' + cp.name + ' 购买了 ' + tile.name)
+      const success = buyProperty(cp, tile.id)
+      if (success) {
+        Sound.playBuySound()
+        this.addLog('🏠 ' + cp.name + ' 购买了 ' + tile.name)
+        // 购买成功特效
+        this.renderer.showPurchaseEffect(tile.id)
+      } else {
+        this.addLog('💸 ' + cp.name + ' 资金不足，无法购买 ' + tile.name)
+      }
     } else {
-      this.addLog('❌ ' + cp.name + ' 跳过了 ' + tile.name)
+      this.addLog('⏭️ ' + cp.name + ' 跳过了 ' + tile.name)
     }
 
     g.phase = 'roll'
     this.buyPrompt = null
+    // 决策完成后推进到下一个玩家
+    nextPlayer(g)
 
     if (this.mode === 'online' && this.network.getIsHost()) {
       await this.network.broadcastGameState(g)
     }
 
-    if (this.mode === 'ai') setTimeout(() => this.processAITurns(), 500)
+    if (this.mode === 'ai' && !g.gameOver) {
+      setTimeout(() => this.processAITurns(), 500)
+    }
   }
 
   // ===== AI 回合 =====
@@ -654,33 +686,35 @@ export default class MainGame {
     this.diceResult = dice
     Sound.playDiceRoll()
 
-    const steps = dice[0] + dice[1]
     const fromTile = cp.position
+    const steps = dice[0] + dice[1]
 
-    // 播放逐格移动动画，动画结束后再执行 executeTurn 的后续逻辑
+    // 先执行游戏逻辑（更新 position、money 等状态）
+    const msgs = executeTurn(g, dice)
+    this.appendLogs(msgs)
+
+    // AI 购买决策（executeTurn 可能设置 phase='action'）
+    if (g.phase === 'action') {
+      const tile = BOARD[cp.position]
+      if (tile && aiDecision(cp, tile, g.difficulty, g)) {
+        buyProperty(cp, tile.id)
+        this.addLog('🏠 ' + cp.name + ' 购买了 ' + tile.name)
+      } else {
+        this.addLog('❌ ' + cp.name + ' 跳过')
+      }
+      g.phase = 'roll'
+    }
+
+    // 纯视觉动画（不影响逻辑，只是让棋子"走过来"）
     this.renderer.playMoveAnimation(
       cp.id, fromTile, steps, cp.color || '#f59e0b', cp.avatar || '🤖',
       () => {
-        // 动画结束：执行游戏逻辑
-        const msgs = executeTurn(g, dice)
-        this.appendLogs(msgs)
+        // 动画结束后更新当前玩家高亮
         this.renderer.setCurrentPlayer(g.currentPlayer)
-
-        if (g.phase === 'action') {
-          const tile = BOARD[cp.position]
-          if (aiDecision(cp, tile, g.difficulty, g)) {
-            buyProperty(cp, tile.id)
-            this.addLog('🏠 ' + cp.name + ' 购买了 ' + tile.name)
-          } else {
-            this.addLog('❌ ' + cp.name + ' 跳过了 ' + tile.name)
-          }
-          g.phase = 'roll'
-        }
-
-        if (!g.gameOver) setTimeout(() => this.processAITurns(), 600)
+        if (!g.gameOver) setTimeout(() => this.processAITurns(), 400)
       },
-      () => { Sound.playMove && Sound.playMove() },
-      1.2  // AI 回合适当加速
+      () => { Sound.playMove() },
+      1.5
     )
   }
 

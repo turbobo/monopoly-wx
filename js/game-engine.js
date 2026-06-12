@@ -165,7 +165,9 @@ export function drawChance(gs) {
 
 // ===== 购买地皮 =====
 export function buyProperty(player, tileId) {
+  if (tileId < 0 || tileId >= BOARD.length) return false
   const tile = BOARD[tileId]
+  if (!tile || tile.price <= 0) return false
   if (player.money >= tile.price) {
     player.money -= tile.price
     player.properties.push(tileId)

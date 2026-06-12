@@ -1,6 +1,7 @@
 // 大富翁中国行 - Canvas棋盘渲染 (v4: 占领强化+逐格移动动画)
 // WeChat Mini Game version - plain JavaScript
 import { BOARD, BOARD_SIZE } from './game-engine.js'
+import { TweenManager, Easing } from './tween.js'
 
 export class BoardRenderer {
   constructor(canvas) {
@@ -13,6 +14,7 @@ export class BoardRenderer {
     this.time = 0
     this.particles = []
     this.floatingTexts = []
+    this.tweens = new TweenManager()  // Tween 动画管理器
 
     this.diceAnim = {
       active: false, values: [1, 1], progress: 0,
@@ -73,6 +75,7 @@ export class BoardRenderer {
   // 由 MainGame 主循环每帧调用
   tick() {
     this.time += 0.016
+    this.tweens.update()
     this.updateParticles()
     this.updateMoveAnim()
     this.draw()
@@ -233,7 +236,55 @@ export class BoardRenderer {
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5
       const speed = Math.random() * 3 + 1.5
-      this.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 4 + 2, alpha: 1, color, life: 0, maxLife: 40 + Math.random() * 20 })
+      this.particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, size: Math.random() * 4 + 2, alpha: 1, color, life: 0, maxLife: 40 + Math.random() * 20, type: 'circle' })
+    }
+  }
+
+  // 金币粒子（收租/购买时）
+  emitCoins(x, y, count = 12) {
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.8
+      const speed = Math.random() * 4 + 2
+      this.particles.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 2,
+        size: Math.random() * 6 + 4, alpha: 1, color: '#ffd700',
+        life: 0, maxLife: 50 + Math.random() * 20, type: 'coin',
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.3
+      })
+    }
+  }
+
+  // 庆祝五彩纸屑（购买成功时）
+  emitConfetti(x, y, count = 20) {
+    const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#8b5cf6', '#ec4899']
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI
+      const speed = Math.random() * 5 + 3
+      this.particles.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        size: Math.random() * 5 + 3, alpha: 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        life: 0, maxLife: 60 + Math.random() * 30, type: 'confetti',
+        rotation: Math.random() * Math.PI * 2,
+        rotSpeed: (Math.random() - 0.5) * 0.2,
+        width: Math.random() * 6 + 3,
+        height: Math.random() * 4 + 2
+      })
+    }
+  }
+
+  // 星光闪烁（道具卡使用时）
+  emitSparkle(x, y, count = 8) {
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count
+      const speed = Math.random() * 2 + 1
+      this.particles.push({
+        x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        size: Math.random() * 3 + 2, alpha: 1, color: '#fff',
+        life: 0, maxLife: 30 + Math.random() * 15, type: 'sparkle',
+        pulse: 0
+      })
     }
   }
 
@@ -245,10 +296,48 @@ export class BoardRenderer {
     this.floatingTexts.push({ text, x, y, color, life: 0, maxLife, fontSize })
   }
 
+  // 购买成功特效
+  showPurchaseEffect(tileIndex) {
+    const pos = this.getTilePosition(tileIndex)
+    const cx = pos.x + pos.w / 2
+    const cy = pos.y + pos.h / 2
+    this.emitConfetti(cx, cy, 25)
+    this.emitCoins(cx, cy, 8)
+    this.showFloatingText(tileIndex, '✅ 购买成功', '#10b981')
+  }
+
+  // 收租特效
+  showRentEffect(tileIndex, amount) {
+    const pos = this.getTilePosition(tileIndex)
+    const cx = pos.x + pos.w / 2
+    const cy = pos.y + pos.h / 2
+    this.emitCoins(cx, cy, 10)
+    this.showFloatingText(tileIndex, '-¥' + amount, '#ef4444')
+  }
+
   updateParticles() {
     this.particles = this.particles.filter(p => {
-      p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life++
+      p.x += p.vx
+      p.y += p.vy
+      p.vy += 0.08  // 重力
+      p.life++
       p.alpha = Math.max(0, 1 - p.life / p.maxLife)
+
+      // 类型特殊更新
+      if (p.type === 'coin') {
+        p.rotation += p.rotSpeed
+        p.vx *= 0.98  // 空气阻力
+      } else if (p.type === 'confetti') {
+        p.rotation += p.rotSpeed
+        p.vx *= 0.99
+        p.vy += 0.02  // 额外下落
+      } else if (p.type === 'sparkle') {
+        p.pulse += 0.2
+        p.size = (Math.sin(p.pulse) + 1) * 2 + 1
+        p.vx *= 0.95
+        p.vy *= 0.95
+      }
+
       return p.life < p.maxLife
     })
   }
@@ -883,10 +972,63 @@ export class BoardRenderer {
   drawParticles() {
     const { ctx } = this
     for (const p of this.particles) {
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * p.alpha, 0, Math.PI * 2)
-      ctx.fillStyle = p.color + Math.round(p.alpha * 255).toString(16).padStart(2, '0')
-      ctx.fill()
+      ctx.globalAlpha = p.alpha
+
+      if (p.type === 'coin') {
+        // 金币：椭圆+旋转+光泽
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rotation)
+        // 金币外圈
+        ctx.beginPath()
+        ctx.ellipse(0, 0, p.size, p.size * 0.6, 0, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffd700'
+        ctx.fill()
+        ctx.strokeStyle = '#b8860b'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        // ¥ 符号
+        ctx.fillStyle = '#b8860b'
+        ctx.font = 'bold ' + Math.round(p.size * 0.8) + 'px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('¥', 0, 0)
+        ctx.restore()
+
+      } else if (p.type === 'confetti') {
+        // 五彩纸屑：矩形+旋转
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.rotate(p.rotation)
+        ctx.fillStyle = p.color
+        ctx.fillRect(-p.width / 2, -p.height / 2, p.width, p.height)
+        ctx.restore()
+
+      } else if (p.type === 'sparkle') {
+        // 星光：十字闪烁
+        ctx.save()
+        ctx.translate(p.x, p.y)
+        ctx.fillStyle = '#fff'
+        // 水平线
+        ctx.fillRect(-p.size * 2, -0.5, p.size * 4, 1)
+        // 垂直线
+        ctx.fillRect(-0.5, -p.size * 2, 1, p.size * 4)
+        // 中心光点
+        ctx.beginPath()
+        ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(255,255,200,' + p.alpha + ')'
+        ctx.fill()
+        ctx.restore()
+
+      } else {
+        // 默认圆形粒子
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.size * p.alpha, 0, Math.PI * 2)
+        ctx.fillStyle = p.color
+        ctx.fill()
+      }
     }
+    ctx.globalAlpha = 1
   }
 
   darkenColor(hex, factor) {
