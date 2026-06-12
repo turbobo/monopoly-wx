@@ -249,9 +249,9 @@ export default class MainGame {
         ctx.fillText('等待其他玩家加入...', cx, py + 10)
       }
 
-      // 邀请好友按钮
+      // 复制房间号按钮（分享受限时的替代方案）
       const inviteY = Math.max(py + 30, H * 0.58)
-      this.drawButton(btnX, inviteY, btnW, 52, '📨 邀请好友', '#8b5cf6', 'lobby-invite')
+      this.drawButton(btnX, inviteY, btnW, 52, '📋 复制房间号发给好友', '#8b5cf6', 'lobby-invite')
 
       // 开始游戏按钮（仅房主可见，2人以上）
       if (this.network.getIsHost() && this.onlinePlayers.length >= 2) {
@@ -348,16 +348,9 @@ export default class MainGame {
 
   onInviteFriend() {
     if (!this.roomId) return
-
-    // 更新分享回调（带房间号）
-    wx.onShareAppMessage(() => ({
-      title: '来玩大富翁！房间号: ' + this.roomId,
-      query: 'roomId=' + this.roomId
-    }))
-
-    // 触发分享面板
-    wx.shareAppMessage()
-    this.addLog('请转发给好友即可')
+    // 分享功能受限，改为复制房间号
+    wx.setClipboardData({ data: this.roomId })
+    this.addLog('房间号已复制，发送给好友加入')
   }
 
   // 从分享卡片进入时自动加入房间
@@ -409,8 +402,11 @@ export default class MainGame {
     ctx.fillStyle = cp.color || '#fff'
     ctx.fillText(cp.avatar + ' ' + cp.name, 80, boardTop + 16)
 
-    // 骰子按钮
-    if (this.isMyTurn && !this.rolling && g.phase === 'roll') {
+    // 骰子按钮：AI模式下判断当前玩家是否为人类玩家(id=0)，在线模式判断 openId
+    const currentIsHuman = this.mode === 'ai'
+      ? !g.players[g.currentPlayer].isAI
+      : g.players[g.currentPlayer].openId === this.network.getOpenId()
+    if (currentIsHuman && !this.rolling && g.phase === 'roll') {
       const cx = this.W / 2
       this.drawButton(cx - 55, boardBottom + 4, 110, 42, '🎲 掷骰子', '#f59e0b', 'game-roll')
     }
@@ -484,6 +480,9 @@ export default class MainGame {
     if (!g || this.rolling || g.phase !== 'roll') return
     const cp = g.players[g.currentPlayer]
     if (!cp || cp.bankrupt) return
+
+    // AI 模式下只允许人类玩家触发
+    if (this.mode === 'ai' && cp.isAI) return
 
     // 在线模式 Guest
     if (this.mode === 'online' && !this.network.getIsHost()) {
