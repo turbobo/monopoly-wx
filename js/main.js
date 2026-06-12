@@ -94,39 +94,47 @@ export default class MainGame {
   // ===== 菜单界面 =====
   drawMenu() {
     const ctx = this.ctx, cx = this.W / 2
+    const btnW = this.W * 0.7  // 按钮宽度 70% 屏幕
+    const btnH = 56            // 按钮高度
+    const btnX = cx - btnW / 2
 
-    // 标题
+    // 标题（更大更醒目）
     ctx.textAlign = 'center'
     ctx.fillStyle = '#f59e0b'
-    ctx.font = 'bold 42px sans-serif'
-    ctx.fillText('大富翁', cx, this.H * 0.22)
-    ctx.font = '18px sans-serif'
+    ctx.font = 'bold 48px sans-serif'
+    ctx.fillText('大富翁', cx, this.H * 0.18)
+
+    ctx.font = '20px sans-serif'
     ctx.fillStyle = '#fbbf24'
-    ctx.fillText('中国行 · 微信版', cx, this.H * 0.28)
+    ctx.fillText('中国行 · 微信版', cx, this.H * 0.24)
 
     // AI 模式按钮
-    this.drawButton(cx - 100, this.H * 0.42, 200, 50, '🤖 AI 对战', '#f59e0b', 'menu-ai')
+    this.drawButton(btnX, this.H * 0.38, btnW, btnH, '🤖 AI 对战', '#f59e0b', 'menu-ai')
 
     // 在线模式按钮
-    this.drawButton(cx - 100, this.H * 0.52, 200, 50, '🌐 在线对战', '#3b82f6', 'menu-online')
+    this.drawButton(btnX, this.H * 0.50, btnW, btnH, '🌐 在线对战', '#3b82f6', 'menu-online')
 
-    // 音效按钮
+    // 音效按钮（居中，更宽）
+    const soundW = 80
     const soundIcon = this.muted ? '🔇' : '🔊'
-    this.drawButton(cx - 25, this.H * 0.65, 50, 40, soundIcon, '#374151', 'menu-sound')
+    this.drawButton(cx - soundW / 2, this.H * 0.65, soundW, 48, soundIcon, '#374151', 'menu-sound')
 
     // 版本
-    ctx.font = '12px sans-serif'
-    ctx.fillStyle = '#6b7280'
-    ctx.fillText('v1.0 · 基于 monopoly-cn-v3', cx, this.H * 0.92)
+    ctx.font = '14px sans-serif'
+    ctx.fillStyle = '#4b5563'
+    ctx.fillText('v1.0 · 基于 monopoly-cn-v3', cx, this.H * 0.88)
   }
 
   handleMenuTouch(x, y) {
     const cx = this.W / 2
-    if (this.hitBtn(x, y, cx - 100, this.H * 0.42, 200, 50)) {
+    const btnW = this.W * 0.7
+    const btnX = cx - btnW / 2
+
+    if (this.hitBtn(x, y, btnX, this.H * 0.38, btnW, 56)) {
       this.startAIMode(3)
-    } else if (this.hitBtn(x, y, cx - 100, this.H * 0.52, 200, 50)) {
+    } else if (this.hitBtn(x, y, btnX, this.H * 0.50, btnW, 56)) {
       this.startOnlineMode()
-    } else if (this.hitBtn(x, y, cx - 25, this.H * 0.65, 50, 40)) {
+    } else if (this.hitBtn(x, y, cx - 40, this.H * 0.65, 80, 48)) {
       this.muted = !this.muted
       Sound.setMuted(this.muted)
     }
@@ -170,57 +178,62 @@ export default class MainGame {
   // ===== 大厅界面 =====
   drawLobby() {
     const ctx = this.ctx, cx = this.W / 2
+    const btnW = this.W * 0.7
+    const btnX = cx - btnW / 2
 
     ctx.textAlign = 'center'
     ctx.fillStyle = '#f59e0b'
-    ctx.font = 'bold 28px sans-serif'
-    ctx.fillText('在线对战', cx, 60)
+    ctx.font = 'bold 32px sans-serif'
+    ctx.fillText('在线对战', cx, 80)
 
     // 创建房间按钮
-    this.drawButton(cx - 100, 100, 200, 48, '🏠 创建房间', '#f59e0b', 'lobby-create')
+    this.drawButton(btnX, 130, btnW, 56, '🏠 创建房间', '#f59e0b', 'lobby-create')
 
     // 加入房间（显示房间号输入提示）
-    this.drawButton(cx - 100, 165, 200, 48, '🔗 加入房间', '#3b82f6', 'lobby-join')
+    this.drawButton(btnX, 205, btnW, 56, '🔗 加入房间', '#3b82f6', 'lobby-join')
 
     // 房间号
     if (this.roomId) {
-      ctx.font = 'bold 24px sans-serif'
+      ctx.font = 'bold 28px sans-serif'
       ctx.fillStyle = '#10b981'
-      ctx.fillText('房间号: ' + this.roomId, cx, 250)
+      ctx.fillText('房间号: ' + this.roomId, cx, 310)
       // 复制按钮
-      this.drawButton(cx + 80, 235, 50, 30, '复制', '#374151', 'lobby-copy')
+      this.drawButton(cx + 100, 290, 70, 36, '复制', '#374151', 'lobby-copy')
     }
 
     // 玩家列表
-    ctx.font = '14px sans-serif'
+    ctx.font = '16px sans-serif'
     ctx.fillStyle = '#9ca3af'
     ctx.textAlign = 'left'
-    let py = 290
+    let py = 360
     for (const p of this.onlinePlayers) {
       ctx.fillStyle = p.isHost ? '#f59e0b' : '#d1d5db'
       ctx.fillText((p.isHost ? '👑 ' : '  ') + p.name, 40, py)
-      py += 28
+      py += 32
     }
 
     // 开始游戏按钮（仅房主可见）
     if (this.network.getIsHost() && this.onlinePlayers.length >= 1) {
-      this.drawButton(cx - 100, this.H * 0.7, 200, 50, '🎮 开始游戏', '#10b981', 'lobby-start')
+      this.drawButton(cx - btnW / 2, this.H * 0.65, btnW, 56, '🎮 开始游戏', '#10b981', 'lobby-start')
     }
 
     // 返回按钮
-    this.drawButton(20, this.H - 60, 80, 36, '← 返回', '#374151', 'lobby-back')
+    this.drawButton(20, this.H - 80, 100, 48, '← 返回', '#374151', 'lobby-back')
 
     // 日志
-    this.drawLogArea(350, this.H * 0.5, this.H * 0.65)
+    this.drawLogArea(400, this.H * 0.45, this.H * 0.60)
   }
 
   handleLobbyTouch(x, y) {
     const cx = this.W / 2
-    if (this.hitBtn(x, y, cx - 100, 100, 200, 48)) this.onCreateRoom()
-    else if (this.hitBtn(x, y, cx - 100, 165, 200, 48)) this.onJoinRoom()
-    else if (this.hitBtn(x, y, cx + 80, 235, 50, 30)) this.onCopyRoomId()
-    else if (this.hitBtn(x, y, cx - 100, this.H * 0.7, 200, 50)) this.onHostStartGame()
-    else if (this.hitBtn(x, y, 20, this.H - 60, 80, 36)) {
+    const btnW = this.W * 0.7
+    const btnX = cx - btnW / 2
+
+    if (this.hitBtn(x, y, btnX, 130, btnW, 56)) this.onCreateRoom()
+    else if (this.hitBtn(x, y, btnX, 205, btnW, 56)) this.onJoinRoom()
+    else if (this.hitBtn(x, y, cx + 100, 290, 70, 36)) this.onCopyRoomId()
+    else if (this.hitBtn(x, y, btnX, this.H * 0.65, btnW, 56)) this.onHostStartGame()
+    else if (this.hitBtn(x, y, 20, this.H - 80, 100, 48)) {
       this.network.leaveRoom()
       this.screen = SCREEN.MENU
     }
@@ -685,13 +698,21 @@ export default class MainGame {
   // ===== 绘制辅助 =====
   drawButton(x, y, w, h, text, color, id) {
     const ctx = this.ctx
+
+    // 按钮背景
     ctx.fillStyle = color
-    this.roundRect(x, y, w, h, 8)
+    this.roundRect(x, y, w, h, 12)
     ctx.fill()
 
+    // 按钮高光（顶部半透明）
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'
+    this.roundRect(x, y, w, h / 2, 12)
+    ctx.fill()
+
+    // 文字
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.font = 'bold 14px sans-serif'
+    ctx.font = 'bold 18px sans-serif'
     ctx.fillStyle = '#fff'
     ctx.fillText(text, x + w / 2, y + h / 2)
     ctx.textBaseline = 'alphabetic'
