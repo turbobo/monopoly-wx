@@ -348,12 +348,16 @@ export default class MainGame {
 
   onInviteFriend() {
     if (!this.roomId) return
-    wx.shareAppMessage({
+
+    // 更新分享回调（带房间号）
+    wx.onShareAppMessage(() => ({
       title: '来玩大富翁！房间号: ' + this.roomId,
-      imageUrl: '',  // 可加分享图片路径
       query: 'roomId=' + this.roomId
-    })
-    this.addLog('分享卡片已生成，发送给好友即可')
+    }))
+
+    // 触发分享面板
+    wx.shareAppMessage()
+    this.addLog('请转发给好友即可')
   }
 
   // 从分享卡片进入时自动加入房间
