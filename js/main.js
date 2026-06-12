@@ -158,17 +158,20 @@ export default class MainGame {
   async startOnlineMode() {
     this.screen = SCREEN.LOBBY
     this.mode = 'online'
+    this.cloudError = false
     this.addLog('正在登录微信...')
 
     try {
       // 延迟初始化云开发（只在需要时）
       if (wx.cloud && !this.cloudInited) {
         try {
-          wx.cloud.init({ traceUser: true })
+          wx.cloud.init({ env: 'prod', traceUser: true })
           this.cloudInited = true
         } catch (e) {
-          this.addLog('❌ 云开发未开通，请在微信开发者工具中开通')
-          this.addLog('提示：点顶部"云开发"按钮 → 开通环境')
+          console.error('云开发初始化失败:', e)
+          this.cloudError = true
+          this.addLog('❌ 云开发未开通')
+          this.addLog('请在微信开发者工具顶部点"云开发"按钮开通')
           return
         }
       }
@@ -190,6 +193,26 @@ export default class MainGame {
     ctx.fillStyle = '#f59e0b'
     ctx.font = 'bold 32px sans-serif'
     ctx.fillText('在线对战', cx, H * 0.10)
+
+    // 云开发未开通时显示错误提示
+    if (this.cloudError) {
+      ctx.fillStyle = '#ef4444'
+      ctx.font = 'bold 20px sans-serif'
+      ctx.fillText('❌ 云开发未开通', cx, H * 0.28)
+
+      ctx.fillStyle = '#9ca3af'
+      ctx.font = '16px sans-serif'
+      ctx.fillText('请在微信开发者工具中：', cx, H * 0.35)
+      ctx.fillText('1. 点顶部"云开发"按钮', cx, H * 0.41)
+      ctx.fillText('2. 开通环境（免费）', cx, H * 0.47)
+      ctx.fillText('3. 返回后重新点"在线对战"', cx, H * 0.53)
+
+      // 返回按钮
+      this.drawButton(20, H - 80, 100, 48, '← 返回', '#374151', 'lobby-back')
+      // 日志
+      this.drawLogArea(H * 0.79, this.W - 20, H * 0.12)
+      return
+    }
 
     // 创建房间按钮
     const createY = H * 0.18
@@ -239,10 +262,18 @@ export default class MainGame {
     const btnW = this.W * 0.7
     const btnX = cx - btnW / 2
     const H = this.H
+    const roomY = H * 0.44
+
+    // 云开发未开通时只响应返回按钮
+    if (this.cloudError) {
+      if (this.hitBtn(x, y, 20, H - 80, 100, 48)) {
+        this.screen = SCREEN.MENU
+      }
+      return
+    }
 
     const createY = H * 0.18
     const joinY = H * 0.30
-    const roomY = H * 0.44
 
     if (this.hitBtn(x, y, btnX, createY, btnW, 56)) this.onCreateRoom()
     else if (this.hitBtn(x, y, btnX, joinY, btnW, 56)) this.onJoinRoom()
@@ -309,9 +340,10 @@ export default class MainGame {
       // 初始化云开发
       if (wx.cloud && !this.cloudInited) {
         try {
-          wx.cloud.init({ traceUser: true })
+          wx.cloud.init({ env: 'prod', traceUser: true })
           this.cloudInited = true
         } catch (e) {
+          this.cloudError = true
           this.addLog('❌ 云开发未开通')
           return
         }
