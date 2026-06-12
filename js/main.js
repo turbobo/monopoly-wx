@@ -260,10 +260,10 @@ export default class MainGame {
     }
 
     // 返回按钮
-    this.drawButton(20, H - 70, 100, 44, '← 返回', '#374151', 'lobby-back')
+    this.drawButton(20, H - 60, 100, 44, '← 返回', '#374151', 'lobby-back')
 
-    // 日志（底部小区域）
-    this.drawLogArea(H - 160, this.W - 40, 80)
+    // 状态提示（仅一行，居中）
+    this.drawLogArea(H - 68, this.W - 40, 30)
   }
 
   handleLobbyTouch(x, y) {
@@ -273,7 +273,7 @@ export default class MainGame {
     const H = this.H
 
     // 返回按钮（始终可用）
-    if (this.hitBtn(x, y, 20, H - 70, 100, 44)) {
+    if (this.hitBtn(x, y, 20, H - 60, 100, 44)) {
       this.network.leaveRoom()
       this.roomId = ''
       this.onlinePlayers = []
@@ -767,16 +767,13 @@ export default class MainGame {
   drawLogArea(startY, maxWidth, maxHeight) {
     if (!this.logs.length) return
     const ctx = this.ctx
-    ctx.textAlign = 'left'
-    ctx.font = '11px sans-serif'
-
-    const maxLines = Math.floor(maxHeight / 16)
-    const visible = this.logs.slice(-maxLines)
-    for (let i = 0; i < visible.length; i++) {
-      ctx.fillStyle = i === visible.length - 1 ? '#d1d5db' : '#6b7280'
-      const text = visible[i].length > 30 ? visible[i].slice(0, 30) + '..' : visible[i]
-      ctx.fillText(text, 16, startY + i * 16)
-    }
+    // 只显示最后一条日志，紧凑风格
+    const lastLog = this.logs[this.logs.length - 1]
+    ctx.textAlign = 'center'
+    ctx.font = '13px sans-serif'
+    ctx.fillStyle = '#9ca3af'
+    const text = lastLog.length > 35 ? lastLog.slice(0, 35) + '..' : lastLog
+    ctx.fillText(text, this.W / 2, startY + 10)
   }
 
   // ===== 网络消息处理 =====
