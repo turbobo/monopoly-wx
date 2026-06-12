@@ -61,14 +61,15 @@ export class BoardRenderer {
   }
 
   start() {
-    const loop = () => {
-      this.time += 0.016
-      this.updateParticles()
-      this.updateMoveAnim()
-      this.draw()
-      this.animId = requestAnimationFrame(loop)
-    }
-    this.animId = requestAnimationFrame(loop)
+    // 不再启动自己的循环，由 MainGame 统一管理
+  }
+
+  // 由 MainGame 主循环每帧调用
+  tick() {
+    this.time += 0.016
+    this.updateParticles()
+    this.updateMoveAnim()
+    this.draw()
   }
 
   stop() { cancelAnimationFrame(this.animId) }

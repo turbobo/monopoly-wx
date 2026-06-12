@@ -29,7 +29,7 @@ export default class MainGame {
 
     this.renderer = new BoardRenderer(this.canvas)
     this.renderer.resize()
-    this.renderer.start()
+    // renderer.tick() 由主循环统一调用，不再单独启动动画循环
 
     this.network = new WxNetwork()
     this.cloudInited = false
@@ -71,6 +71,7 @@ export default class MainGame {
     if (this.screen === SCREEN.MENU) this.drawMenu()
     else if (this.screen === SCREEN.LOBBY) this.drawLobby()
     else if (this.screen === SCREEN.GAME) {
+      this.renderer.tick()  // 棋盘 + 动画（统一由主循环驱动）
       this.drawGameUI()
       if (this.tileInfo !== null) this.drawTileInfo()
       if (this.buyPrompt) this.drawBuyPrompt()
