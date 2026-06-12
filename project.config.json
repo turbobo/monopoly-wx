@@ -49,9 +49,11 @@
   "compileType": "game",
   "libVersion": "3.16.1",
   "appid": "wxb417b71df56c4a1c",
+  "cloudfunctionRoot": "cloud/functions/",
   "projectname": "monopoly-wx",
   "condition": {},
   "simulatorPluginLibVersion": {},
   "isGameTourist": false,
-  "editorSetting": {}
+  "editorSetting": {},
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
 }

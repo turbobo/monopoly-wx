@@ -43,24 +43,20 @@ export class BoardRenderer {
     const sysInfo = wx.getSystemInfoSync()
     const screenWidth = sysInfo.screenWidth
     const screenHeight = sysInfo.screenHeight
-    // 与 MainGame 保持一致，使用主 canvas 的 dpr（不超过 2）
     const dpr = Math.min(sysInfo.pixelRatio || 1, 2)
     this.dpr = dpr
 
-    // 棋盘边长：占屏幕宽度，留出顶部信息栏和底部UI的空间
-    // 顶部预留 24px（CSS像素），底部预留屏幕高度45%
+    // 棋盘边长（CSS像素），顶部留 24px，底部留屏幕高度 48%
     const boardTop = 24
     const maxBoardH = screenHeight * 0.52
     const maxBoardW = screenWidth - 8
     const boardSizeCss = Math.min(maxBoardW, maxBoardH)
 
-    // 不再修改 canvas.width/height（由 MainGame 统一设置全屏大小）
-    // 用物理像素记录棋盘绘制区域
-    this.size = boardSizeCss * dpr
+    // 所有内部尺寸统一用 CSS 像素，不再换算物理像素
+    this.size = boardSizeCss
     this.tileSize = this.size / 8.5
     this.cornerSize = this.tileSize * 1.3
 
-    // 记录棋盘在屏幕上的 CSS 像素位置（用于 hitTest）
     this.boardCssSize = boardSizeCss
     this.boardCssTop = boardTop
     this.boardCssLeft = (screenWidth - boardSizeCss) / 2
@@ -268,20 +264,14 @@ export class BoardRenderer {
     const useEffects = effects || this.lastEffects
 
     const { ctx, size } = this
-    // MainGame 已经 ctx.scale(dpr, dpr)，这里的坐标都是 CSS 像素
-    // 棋盘绘制原点（CSS像素）
     const ox = this.boardCssLeft
     const oy = this.boardCssTop
-    // 棋盘在 CSS 像素下的尺寸
-    const cssSize = this.boardCssSize
 
-    // 只清除棋盘区域
-    ctx.clearRect(ox, oy, cssSize, cssSize)
+    // MainGame 已做 ctx.scale(dpr,dpr)，这里全程 CSS 像素坐标
+    ctx.clearRect(ox, oy, size, size)
 
     ctx.save()
     ctx.translate(ox, oy)
-    // 将棋盘内部坐标（物理像素）缩放回 CSS 像素
-    ctx.scale(1 / this.dpr, 1 / this.dpr)
 
     // 高级深蓝背景
     const bgGrad = ctx.createRadialGradient(size * 0.4, size * 0.35, 0, size / 2, size / 2, size * 0.75)
@@ -348,12 +338,10 @@ export class BoardRenderer {
 
   // 将屏幕坐标转换为棋盘格子索引，未命中返回 -1
   hitTest(clientX, clientY) {
-    const dpr = this.dpr
-    // 转换为棋盘内部物理像素坐标（减去棋盘左上角的 CSS 偏移，再乘以 dpr）
-    const px = (clientX - this.boardCssLeft) * dpr
-    const py = (clientY - this.boardCssTop) * dpr
+    // size/tileSize 现在全部是 CSS 像素，直接用 CSS 坐标做 hitTest
+    const px = clientX - this.boardCssLeft
+    const py = clientY - this.boardCssTop
 
-    // 超出棋盘范围直接返回 -1
     if (px < 0 || py < 0 || px > this.size || py > this.size) return -1
 
     for (let i = 0; i < BOARD_SIZE; i++) {
@@ -369,10 +357,9 @@ export class BoardRenderer {
   getTileScreenCenter(index) {
     if (index < 0 || index >= BOARD_SIZE) return null
     const pos = this.getTilePosition(index)
-    const dpr = this.dpr
     return {
-      x: this.boardCssLeft + (pos.x + pos.w / 2) / dpr,
-      y: this.boardCssTop + (pos.y + pos.h / 2) / dpr,
+      x: this.boardCssLeft + pos.x + pos.w / 2,
+      y: this.boardCssTop + pos.y + pos.h / 2,
     }
   }
 

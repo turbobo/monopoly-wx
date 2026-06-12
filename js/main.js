@@ -164,7 +164,6 @@ export default class MainGame {
       this.addLog('已连接: ' + user.nickName)
     } catch (err) {
       this.addLog('连接失败: ' + err.message)
-      this.addLog('请检查 GoEasy AppKey 配置')
     }
   }
 
