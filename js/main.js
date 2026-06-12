@@ -74,7 +74,6 @@ export default class MainGame {
       this.renderer.tick()  // 棋盘 + 动画（统一由主循环驱动）
       this.drawGameUI()
       if (this.tileInfo !== null) this.drawTileInfo()
-      if (this.buyPrompt) this.drawBuyPrompt()
     }
 
     requestAnimationFrame(() => this.loop())
